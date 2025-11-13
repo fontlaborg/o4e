@@ -34,7 +34,7 @@ serde_json = "1.0"
 # Font/Text
 harfbuzz_rs = "2.0"
 icu_segmenter = { version = "1.5", features = ["compiled_data", "auto"] }
-icu_locid = { version = "1.5", features = ["compiled_data"] }
+icu_locid = "1.5"
 icu_properties = { version = "1.5", features = ["compiled_data"] }
 ttf-parser = "0.24"
 unicode-bidi = "0.3"

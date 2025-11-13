@@ -889,6 +889,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tiny-skia",
  "ttf-parser 0.24.1",
+ "unicode-bidi",
  "usvg",
 ]
 
