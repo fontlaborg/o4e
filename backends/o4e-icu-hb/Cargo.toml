@@ -17,9 +17,10 @@ lru.workspace = true
 
 # Text processing
 harfbuzz_rs = "2.0"
-icu_segmenter = "1.5"
-icu_locid = "1.5"
-icu_properties = "1.5"
+icu_segmenter.workspace = true
+icu_locid.workspace = true
+icu_properties.workspace = true
+unicode-bidi.workspace = true
 
 # Font handling
 ttf-parser = "0.24"
