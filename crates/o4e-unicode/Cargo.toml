@@ -1,0 +1,9 @@
+[package]
+name = "o4e-unicode"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+o4e-core = { path = "../../backends/o4e-core" }

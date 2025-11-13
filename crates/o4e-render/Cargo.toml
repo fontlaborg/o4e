@@ -1,0 +1,21 @@
+[package]
+name = "o4e-render"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Rendering utilities for o4e text engine"
+
+[dependencies]
+o4e-core = { path = "../../backends/o4e-core" }
+thiserror.workspace = true
+anyhow.workspace = true
+log.workspace = true
+rayon.workspace = true
+parking_lot.workspace = true
+
+# For SVG generation
+svgtypes = "0.15"
+kurbo = "0.11"
+
+# For path simplification (optional - we'll implement our own simple version)

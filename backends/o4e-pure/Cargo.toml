@@ -1,0 +1,9 @@
+[package]
+name = "o4e-pure"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+o4e-core = { path = "../o4e-core" }

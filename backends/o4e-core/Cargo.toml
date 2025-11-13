@@ -1,0 +1,19 @@
+[package]
+name = "o4e-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core traits and types for o4e text rendering engine"
+
+[dependencies]
+thiserror.workspace = true
+anyhow.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+lru.workspace = true
+parking_lot.workspace = true
+dashmap.workspace = true
+memmap2.workspace = true

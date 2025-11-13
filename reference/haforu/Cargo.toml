@@ -1,0 +1,85 @@
+# this_file: reference/haforu/Cargo.toml
+
+[package]
+name = "haforu"
+version = "2.0.0"
+edition = "2021"
+authors = ["o4e Team"]
+description = "High-performance batch font renderer for o4e (open font renderer)"
+license = "MIT OR Apache-2.0"
+rust-version = "1.70"
+
+[lib]
+name = "haforu"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "haforu"
+path = "src/main.rs"
+
+[dependencies]
+# CLI and argument parsing
+clap = { version = "4.5", features = ["derive", "cargo"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Font handling - using fontations ecosystem
+read-fonts = "0.22"
+skrifa = "0.22"
+
+# Text shaping
+harfbuzz_rs = "2.0"
+
+# Rasterization
+zeno = "0.3"
+
+# Image output
+image = { version = "0.25", features = ["png", "jpeg"] }
+
+# Memory mapping for zero-copy font loading
+memmap2 = "0.9"
+
+# Base64 encoding for JSONL output
+base64 = "0.22"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Parallel processing
+rayon = "1.10"
+
+# LRU cache for font instances
+lru = "0.12"
+
+# Path utilities
+camino = { version = "1.1", features = ["serde1"] }
+
+# Python bindings
+pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
+numpy = { version = "0.22", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10"
+approx = "0.5"
+insta = "1.39"
+
+[features]
+default = []
+python = ["pyo3", "numpy"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

@@ -1,0 +1,35 @@
+[package]
+name = "o4e-win"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "DirectWrite backend for o4e text rendering"
+
+[dependencies]
+o4e-core = { path = "../o4e-core" }
+o4e-render = { path = "../../crates/o4e-render" }
+thiserror.workspace = true
+anyhow.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+lru.workspace = true
+
+# Image encoding
+png = "0.17"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Imaging",
+    "Win32_System_SystemServices",
+    "Foundation_Numerics",
+]}
+
+[dev-dependencies]
+env_logger = "0.11"

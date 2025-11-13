@@ -1,0 +1,32 @@
+[package]
+name = "o4e-python"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "o4e"
+crate-type = ["cdylib"]
+
+[dependencies]
+o4e-core = { path = "../backends/o4e-core" }
+pyo3 = { version = "0.22", features = ["extension-module"] }
+
+# Platform-specific backends
+[target.'cfg(target_os = "macos")'.dependencies]
+o4e-mac = { path = "../backends/o4e-mac", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+o4e-win = { path = "../backends/o4e-win", optional = true }
+
+[dependencies.o4e-icu-hb]
+path = "../backends/o4e-icu-hb"
+optional = true
+
+[features]
+default = []
+python = ["pyo3/extension-module"]
+mac = ["o4e-mac"]
+windows = ["o4e-win"]
+icu = ["o4e-icu-hb"]

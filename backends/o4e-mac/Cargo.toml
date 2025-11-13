@@ -1,0 +1,33 @@
+[package]
+name = "o4e-mac"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "CoreText backend for o4e text rendering"
+
+[dependencies]
+o4e-core = { path = "../o4e-core" }
+o4e-render = { path = "../../crates/o4e-render" }
+thiserror.workspace = true
+anyhow.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+lru.workspace = true
+
+# Image encoding
+png = "0.17"
+
+# macOS-specific dependencies
+objc2 = "0.5"
+objc2-foundation = { version = "0.2", features = ["NSString", "NSAttributedString", "NSArray", "NSDictionary", "NSValue"] }
+objc2-app-kit = { version = "0.2", features = ["NSFont", "NSColor"] }
+core-foundation = "0.9"  # Match core-text version
+core-text = "20.1"
+core-graphics = "0.23"  # Match core-text version
+
+[dev-dependencies]
+env_logger = "0.11"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Only compile on macOS
