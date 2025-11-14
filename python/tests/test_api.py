@@ -16,11 +16,21 @@ if str(PYTHON_PACKAGE) not in sys.path:
 
 # Mock the native module for testing
 class NativeFontMock:
-    def __init__(self, family, size, weight, style):
+    def __init__(self, family, size, weight, style, variations=None, features=None):
         self.family = family
         self.size = size
         self.weight = weight
         self.style = style
+        self.variations = variations or {}
+        self.features = features or {}
+
+    @classmethod
+    def from_path(cls, path, size, weight, style, variations=None, features=None):
+        return cls(path, size, weight, style, variations, features)
+
+    @classmethod
+    def from_bytes(cls, name, _data, size, weight, style, variations=None, features=None):
+        return cls(name, size, weight, style, variations, features)
 
 
 mock_native = MagicMock()
@@ -65,12 +75,20 @@ class TestFont:
 
     def test_font_from_path(self):
         """Test font from file path."""
-        font = o4e.Font(Path("/path/to/font.ttf"), 16)
+        font = o4e.Font.from_path(Path("/path/to/font.ttf"), 16)
         assert "font.ttf" in font.family
+
+    def test_font_from_bytes(self):
+        """Test font from raw bytes."""
+        payload = b"fake-font-data"
+        font = o4e.Font.from_bytes("Custom", payload, 20)
+        assert font.family == "Custom"
+        clone = font.with_size(22)
+        assert clone.family == "Custom"
 
     def test_font_with_size(self):
         """Test creating font variant with different size."""
-        font1 = o4e.Font("Arial", 24)
+        font1 = o4e.Font.from_path("/tmp/foo.ttf", 24)
         font2 = font1.with_size(36)
         assert font2.size == 36
         assert font2.family == font1.family

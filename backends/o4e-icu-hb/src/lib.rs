@@ -12,9 +12,9 @@ use o4e_core::{
     Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
     SegmentOptions, ShapingResult, TextRun,
 };
+use o4e_fontdb::{script_fallbacks, FontDatabase, FontHandle};
 use o4e_render::outlines::glyph_bez_path as recorded_glyph_path;
 use o4e_unicode::TextSegmenter;
-use o4e_fontdb::{script_fallbacks, FontDatabase, FontHandle};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -128,47 +128,6 @@ impl HarfBuzzBackend {
             font_db: FontDatabase::global(),
             segmenter: TextSegmenter::new(),
         }
-    }
-
-    fn resolve_font_path(&self, font: &Font) -> Result<PathBuf> {
-        let requested = Path::new(&font.family);
-        if requested.exists() {
-            return Ok(canonicalize_path(requested));
-        }
-
-        if let Some(path) = self.family_path_cache.read().get(&font.family).cloned() {
-            return Ok(path);
-        }
-
-        for dir in font_search_dirs() {
-            if dir.as_os_str().is_empty() {
-                continue;
-            }
-
-            let direct = dir.join(&font.family);
-            if direct.exists() {
-                let resolved = canonicalize_path(&direct);
-                self.family_path_cache
-                    .write()
-                    .insert(font.family.clone(), resolved.clone());
-                return Ok(resolved);
-            }
-
-            for ext in ["ttf", "otf", "ttc"] {
-                let candidate = dir.join(format!("{}.{}", font.family, ext));
-                if candidate.exists() {
-                    let resolved = canonicalize_path(&candidate);
-                    self.family_path_cache
-                        .write()
-                        .insert(font.family.clone(), resolved.clone());
-                    return Ok(resolved);
-                }
-            }
-        }
-
-        Err(O4eError::FontNotFound {
-            name: font.family.clone(),
-        })
     }
 
     fn load_font_data(&self, font: &Font) -> Result<Arc<FontDataEntry>> {
@@ -638,7 +597,7 @@ mod tests {
     }
 
     fn fixture_font(name: &str) -> Font {
-        Font::new(fixture_font_path(name), 48.0)
+        Font::from_path(fixture_font_path(name), 48.0)
     }
 
     fn ensure_test_fonts() {

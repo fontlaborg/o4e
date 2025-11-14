@@ -4,7 +4,7 @@
 
 use dashmap::DashMap;
 use fontdb::{Database, Family, Query, Source, Stretch, Style, Weight};
-use log::{debug, warn};
+use log::warn;
 use o4e_core::{
     types::{Font, FontSource, FontStyle},
     O4eError, Result,
@@ -47,7 +47,11 @@ impl FontDatabase {
     }
 
     /// Resolve a [`FontSource`] without a full [`Font`] context.
-    pub fn resolve_source(&self, source: &FontSource, fallback_name: &str) -> Result<Arc<FontHandle>> {
+    pub fn resolve_source(
+        &self,
+        source: &FontSource,
+        fallback_name: &str,
+    ) -> Result<Arc<FontHandle>> {
         self.resolve_inner(None, source, fallback_name)
     }
 
@@ -71,23 +75,29 @@ impl FontDatabase {
         fallback_name: &str,
     ) -> Result<Arc<FontHandle>> {
         let db = self.db.read();
-        let mut query = Query {
-            families: vec![Family::Name(name.into()), Family::Name(fallback_name.into())],
-            ..Query::default()
-        };
-        if let Some(font) = font {
-            query.weight = Weight(font.weight);
-            query.stretch = Stretch::NORMAL;
-            query.style = match font.style {
-                FontStyle::Normal => Style::Normal,
-                FontStyle::Italic => Style::Italic,
-                FontStyle::Oblique => Style::Oblique,
-            };
+        let families_vec: Vec<Family<'_>> = if name == fallback_name {
+            vec![Family::Name(name)]
         } else {
-            query.weight = Weight::NORMAL;
-            query.stretch = Stretch::NORMAL;
-            query.style = Style::Normal;
-        }
+            vec![Family::Name(name), Family::Name(fallback_name)]
+        };
+        let (weight, style) = if let Some(font) = font {
+            (
+                Weight(font.weight),
+                match font.style {
+                    FontStyle::Normal => Style::Normal,
+                    FontStyle::Italic => Style::Italic,
+                    FontStyle::Oblique => Style::Oblique,
+                },
+            )
+        } else {
+            (Weight::NORMAL, Style::Normal)
+        };
+        let query = Query {
+            families: &families_vec,
+            weight,
+            stretch: Stretch::Normal,
+            style,
+        };
 
         if let Some(id) = db.query(&query) {
             let face = db
@@ -111,8 +121,8 @@ impl FontDatabase {
             return Ok(entry.clone());
         }
 
-        let bytes = std::fs::read(&canonical)
-            .map_err(|e| O4eError::font_load(canonical.clone(), e))?;
+        let bytes =
+            std::fs::read(&canonical).map_err(|e| O4eError::font_load(canonical.clone(), e))?;
         let handle = Arc::new(FontHandle {
             key: key.clone(),
             path: Some(canonical),
@@ -148,13 +158,20 @@ impl FontDatabase {
         }
 
         let (path, bytes) = match &face.source {
-            Source::File(path, _) => {
+            Source::File(path) => {
                 let canonical = canonicalize(path);
                 let data = std::fs::read(&canonical)
                     .map_err(|e| O4eError::font_load(canonical.clone(), e))?;
                 (Some(canonical), Arc::from(data.into_boxed_slice()))
             }
-            Source::Binary(data, _) => (None, data.clone()),
+            Source::Binary(data) => {
+                let owned = data.as_ref().as_ref().to_vec();
+                (None, Arc::from(owned.into_boxed_slice()))
+            }
+            Source::SharedFile(path, data) => {
+                let owned = data.as_ref().as_ref().to_vec();
+                (Some(path.clone()), Arc::from(owned.into_boxed_slice()))
+            }
         };
 
         let handle = Arc::new(FontHandle {
@@ -162,7 +179,11 @@ impl FontDatabase {
             path,
             face_index: face.index,
             bytes,
-            family: face.family.clone().unwrap_or_else(|| face.post_script_name.clone()),
+            family: face
+                .families
+                .first()
+                .map(|(name, _)| name.clone())
+                .unwrap_or_else(|| face.post_script_name.clone()),
         });
         self.cache.insert(key, handle.clone());
         Ok(handle)
@@ -171,8 +192,9 @@ impl FontDatabase {
 
 fn cache_key(face: &fontdb::FaceInfo) -> String {
     match &face.source {
-        Source::File(path, _) => format!("file:{}#{}", path.display(), face.index),
-        Source::Binary(_, _) => format!("memory:{}#{}", face.post_script_name, face.index),
+        Source::File(path) => format!("file:{}#{}", path.display(), face.index),
+        Source::Binary(_) => format!("memory:{}#{}", face.post_script_name, face.index),
+        Source::SharedFile(path, _) => format!("file:{}#{}", path.display(), face.index),
     }
 }
 
@@ -237,8 +259,11 @@ const ARABIC_FALLBACKS: [&str; 4] = [
     "GeezaPro",
     "ArialUnicodeMS",
 ];
-const DEVANAGARI_FALLBACKS: [&str; 3] =
-    ["NotoSansDevanagari-Regular", "NotoSansDevanagari", "KohinoorDevanagari"];
+const DEVANAGARI_FALLBACKS: [&str; 3] = [
+    "NotoSansDevanagari-Regular",
+    "NotoSansDevanagari",
+    "KohinoorDevanagari",
+];
 const CJK_FALLBACKS: [&str; 3] = ["NotoSansCJKsc-Regular", "PingFangSC", "NotoSansJP-Regular"];
 const HANGUL_FALLBACKS: [&str; 2] = ["NotoSansKR-Regular", "AppleSDGothicNeo-Regular"];
 const HEBREW_FALLBACKS: [&str; 2] = ["NotoSansHebrew-Regular", "ArialHebrew"];

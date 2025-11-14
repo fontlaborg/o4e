@@ -6,14 +6,12 @@ use crate::outlines::glyph_bez_path as recorded_glyph_path;
 use kurbo::{BezPath, PathEl, Point};
 use log::debug;
 use o4e_core::{types::BoundingBox, Font, Glyph, ShapingResult, SvgOptions};
+use o4e_fontdb::FontDatabase;
 use owned_ttf_parser::{AsFaceRef, OwnedFace};
 use parking_lot::RwLock;
-use shellexpand::tilde;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Write;
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use thiserror::Error;
 use ttf_parser::{FaceParsingError, GlyphId};
@@ -302,98 +300,33 @@ struct FontStore {
 
 impl FontStore {
     fn face_for(&self, font: &Font) -> Result<Arc<OwnedFace>, FontLoadError> {
-        let path = self.resolve_font_path(&font.family)?;
-        let key = path.to_string_lossy().into_owned();
+        let handle = FontDatabase::global()
+            .resolve(font)
+            .map_err(|err| FontLoadError::Resolve(err.to_string()))?;
+        let key = handle.key.clone();
 
         if let Some(face) = self.faces.read().get(&key) {
             return Ok(face.clone());
         }
 
-        let data = fs::read(&path).map_err(|source| FontLoadError::Io {
-            path: path.clone(),
-            source,
-        })?;
-        let face = OwnedFace::from_vec(data, 0).map_err(|source| FontLoadError::Parse {
-            path: path.clone(),
-            source,
-        })?;
+        let face = OwnedFace::from_vec(handle.bytes.as_ref().to_vec(), handle.face_index)
+            .map_err(|source| FontLoadError::Parse { source })?;
         let face = Arc::new(face);
 
         self.faces.write().insert(key, face.clone());
         Ok(face)
     }
-
-    fn resolve_font_path(&self, family: &str) -> Result<PathBuf, FontLoadError> {
-        let expanded = tilde(family).to_string();
-        let provided = Path::new(&expanded);
-        if provided.exists() {
-            return Ok(provided.to_path_buf());
-        }
-
-        let candidates = candidate_font_names(&expanded);
-        for dir in font_directories() {
-            for name in &candidates {
-                let candidate = dir.join(name);
-                if candidate.exists() {
-                    return Ok(candidate);
-                }
-            }
-        }
-
-        Err(FontLoadError::NotFound(family.to_string()))
-    }
 }
 
 #[derive(Debug, Error)]
 enum FontLoadError {
-    #[error("font '{0}' not found on disk or in system directories")]
-    NotFound(String),
-    #[error("failed to read font at {path:?}: {source}")]
-    Io {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("invalid font data at {path:?}: {source}")]
+    #[error("failed to resolve font: {0}")]
+    Resolve(String),
+    #[error("invalid font data: {source}")]
     Parse {
-        path: PathBuf,
         #[source]
         source: FaceParsingError,
     },
-}
-
-fn candidate_font_names(family: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let trimmed = family.trim();
-    if trimmed.is_empty() {
-        return names;
-    }
-
-    let mut variants = vec![trimmed.to_string()];
-    if !trimmed.contains(std::path::MAIN_SEPARATOR) && trimmed.contains(' ') {
-        variants.push(trimmed.replace(' ', ""));
-    }
-
-    for variant in variants {
-        names.push(variant.clone());
-        if !variant.contains(std::path::MAIN_SEPARATOR) && Path::new(&variant).extension().is_none()
-        {
-            for ext in ["ttf", "otf", "ttc"] {
-                names.push(format!("{variant}.{ext}"));
-            }
-        }
-    }
-
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn font_directories() -> Vec<PathBuf> {
-    o4e_core::utils::system_font_dirs()
-        .into_iter()
-        .map(|dir| PathBuf::from(tilde(&dir).to_string()))
-        .collect()
 }
 
 #[cfg(test)]

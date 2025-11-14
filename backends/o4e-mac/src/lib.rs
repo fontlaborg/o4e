@@ -16,7 +16,8 @@ use core_foundation::{
 use core_graphics::{
     color_space::CGColorSpace,
     context::{CGContext, CGTextDrawingMode},
-    font::CGGlyph,
+    data_provider::CGDataProvider,
+    font::{CGFont, CGGlyph},
     geometry::{CGPoint, CGRect, CGSize},
 };
 use core_text::{
@@ -31,10 +32,11 @@ use core_text::{
 };
 use lru::LruCache;
 use o4e_core::{
-    types::{AntialiasMode, FontStyle, RenderFormat},
+    types::{AntialiasMode, FontSource, FontStyle, RenderFormat},
     Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
     SegmentOptions, ShapingResult, TextRun,
 };
+use o4e_fontdb::FontDatabase;
 use o4e_unicode::TextSegmenter;
 use parking_lot::RwLock;
 use std::borrow::Cow;
@@ -46,6 +48,17 @@ pub struct CoreTextBackend {
     ct_font_cache: RwLock<LruCache<String, Arc<CTFont>>>,
     shape_cache: RwLock<LruCache<String, Arc<ShapingResult>>>,
     segmenter: TextSegmenter,
+    font_db: &'static FontDatabase,
+}
+
+struct ProviderData {
+    bytes: Arc<[u8]>,
+}
+
+impl AsRef<[u8]> for ProviderData {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 impl CoreTextBackend {
@@ -55,6 +68,7 @@ impl CoreTextBackend {
             ct_font_cache: RwLock::new(LruCache::new(NonZeroUsize::new(64).unwrap())),
             shape_cache: RwLock::new(LruCache::new(NonZeroUsize::new(256).unwrap())),
             segmenter: TextSegmenter::new(),
+            font_db: FontDatabase::global(),
         }
     }
 
@@ -86,7 +100,7 @@ impl CoreTextBackend {
             }
         }
 
-        let ct_font = Self::build_ct_font(font)?;
+        let ct_font = self.build_ct_font(font)?;
         let ct_font = Arc::new(ct_font);
         {
             let mut cache = self.ct_font_cache.write();
@@ -101,12 +115,37 @@ impl CoreTextBackend {
         cache.push(cache_key, ct_font);
     }
 
-    fn build_ct_font(font: &Font) -> Result<CTFont> {
-        match new_from_name(&font.family, font.size as f64) {
-            Ok(ct_font) => Ok(ct_font),
-            Err(_) => {
-                let descriptor = Self::descriptor_for_font(font);
-                Ok(font::new_from_descriptor(&descriptor, font.size as f64))
+    fn build_ct_font(&self, font: &Font) -> Result<CTFont> {
+        if matches!(font.source, FontSource::Family(_)) {
+            if let Ok(ct_font) = new_from_name(&font.family, font.size as f64) {
+                return Ok(ct_font);
+            }
+        }
+
+        if let Some(ct_font) = self.try_load_ct_font_from_source(font)? {
+            return Ok(ct_font);
+        }
+
+        let descriptor = Self::descriptor_for_font(font);
+        Ok(font::new_from_descriptor(&descriptor, font.size as f64))
+    }
+
+    fn try_load_ct_font_from_source(&self, font: &Font) -> Result<Option<CTFont>> {
+        match font.source {
+            FontSource::Family(_) => Ok(None),
+            _ => {
+                let handle = self.font_db.resolve(font)?;
+                let provider_data = Arc::new(ProviderData {
+                    bytes: handle.bytes.clone(),
+                });
+                let provider = CGDataProvider::from_buffer(provider_data);
+                let cg_font = CGFont::from_data_provider(provider).map_err(|_| {
+                    O4eError::render(format!(
+                        "Failed to create CGFont from '{}'",
+                        handle.family
+                    ))
+                })?;
+                Ok(Some(font::new_from_CGFont(&cg_font, font.size as f64)))
             }
         }
     }

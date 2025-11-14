@@ -44,8 +44,8 @@ Deliver a verifiable tri-backend MVP—CoreText (macOS), DirectWrite (Windows), 
 5. [x] Tests: extend existing segmentation tests to ensure fallback fonts resolve; add shaping regression tests for Arabic/Devanagari strings comparing glyph ID sequences against HarfBuzz reference output stored in JSON fixtures.
 
 ### 1.4 Shared backend services
-1. Move system font discovery + fallback lists into a new crate `crates/o4e-fontdb` (or reuse `font-kit` if adequate) to avoid duplicating search logic across backends.
-2. Expand `Font` struct to capture `source: FontSource` (family vs path vs bytes) and update all backends to handle each variant.
+1. [x] Move system font discovery + fallback lists into a new crate `crates/o4e-fontdb` (or reuse `font-kit` if adequate) to avoid duplicating search logic across backends.
+2. [x] Expand `Font` struct to capture `source: FontSource` (family vs path vs bytes) and update all backends to handle each variant.
 3. [x] Implement `Backend::clear_cache` tests ensuring caches actually shrink (hit counters reset) to prevent leaks (added `FontCache::is_empty` diagnostics plus HarfBuzz/CoreText/DirectWrite fixtures).
 4. Provide `RenderOptionsDiagnostics` struct (crate-local) logging actual backend + feature set for easier debugging; integrate with `log` macros only when `RUST_LOG` enabled.
 
@@ -65,7 +65,7 @@ Deliver a verifiable tri-backend MVP—CoreText (macOS), DirectWrite (Windows), 
 ## Phase 3 – Python API & Packaging
 ### 3.1 API surface completion (`python/src/lib.rs`, `python/o4e/__init__.py`)
 1. Auto backend selection order: mac→CoreText, Windows→DirectWrite, else HarfBuzz; allow `backend="harfbuzz"` override even on mac/windows.
-2. Support user-provided font bytes/paths via `Font.from_path`/`Font.from_bytes` factory; plumb through to Rust `FontSource`.
+2. [x] Support user-provided font bytes/paths via `Font.from_path`/`Font.from_bytes` factory; plumb through to Rust `FontSource`.
 3. Expose `TextSegmenter` class + streaming batch API; ensure docstrings map to Rust types and mention return types.
 4. Add `__repr__`/`__richrepr__` for debugging, plus `to_pillow` helper for `RenderOutput::Bitmap`.
 5. Tests: `python/tests/test_api.py` should cover render, shape, batch, fallback fonts, error handling; use fixtures referencing small SIL fonts stored under `python/tests/fonts`.

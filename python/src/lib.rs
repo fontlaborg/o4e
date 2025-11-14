@@ -4,10 +4,12 @@
 
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::sync::Arc;
 
 use o4e_core::{
     types::{
-        AntialiasMode, BoundingBox, Direction, Features, FontStyle, HintingMode, RenderFormat,
+        AntialiasMode, BoundingBox, Direction, Features, FontSource, FontStyle, HintingMode,
+        RenderFormat,
     },
     utils::combine_shaped_results,
     Backend, Font as CoreFont, Glyph as CoreGlyph, RenderOptions as CoreRenderOptions,
@@ -22,7 +24,7 @@ use pyo3::{
     },
     IntoPy,
 };
-use pyo3::{Bound, PyRef};
+use pyo3::{Bound, PyRef, PyType};
 
 #[cfg(all(target_os = "macos", feature = "mac"))]
 use o4e_mac::CoreTextBackend;
@@ -45,6 +47,9 @@ struct Font {
     weight: u16,
     #[pyo3(get)]
     style: String,
+    source: FontSource,
+    variations: HashMap<String, f32>,
+    features: HashMap<String, bool>,
 }
 
 impl Font {
@@ -60,8 +65,11 @@ impl Font {
             size: self.size,
             weight: self.weight,
             style: font_style,
-            variations: HashMap::new(),
-            features: Features::default(),
+            variations: self.variations.clone(),
+            features: Features {
+                tags: self.features.clone(),
+            },
+            source: self.source.clone(),
         }
     }
 }
@@ -69,14 +77,75 @@ impl Font {
 #[pymethods]
 impl Font {
     #[new]
-    #[pyo3(signature = (family, size=None, weight=None, style=None))]
-    fn new(family: String, size: Option<f32>, weight: Option<u16>, style: Option<String>) -> Self {
+    #[pyo3(signature = (family, size=None, weight=None, style=None, variations=None, features=None))]
+    fn new(
+        family: String,
+        size: Option<f32>,
+        weight: Option<u16>,
+        style: Option<String>,
+        variations: Option<HashMap<String, f32>>,
+        features: Option<HashMap<String, bool>>,
+    ) -> Self {
         Self {
-            family,
+            family: family.clone(),
             size: size.unwrap_or(16.0),
             weight: weight.unwrap_or(400),
             style: style.unwrap_or_else(|| "normal".to_string()),
+            source: FontSource::Family(family),
+            variations: variations.unwrap_or_default(),
+            features: features.unwrap_or_default(),
         }
+    }
+
+    #[classmethod]
+    #[pyo3(signature = (path, size=None, weight=None, style=None, variations=None, features=None))]
+    fn from_path(
+        _cls: &Bound<'_, PyType>,
+        path: String,
+        size: Option<f32>,
+        weight: Option<u16>,
+        style: Option<String>,
+        variations: Option<HashMap<String, f32>>,
+        features: Option<HashMap<String, bool>>,
+    ) -> Self {
+        Self {
+            family: path.clone(),
+            size: size.unwrap_or(16.0),
+            weight: weight.unwrap_or(400),
+            style: style.unwrap_or_else(|| "normal".to_string()),
+            source: FontSource::Path(path),
+            variations: variations.unwrap_or_default(),
+            features: features.unwrap_or_default(),
+        }
+    }
+
+    #[classmethod]
+    #[pyo3(
+        signature = (name, data, size=None, weight=None, style=None, variations=None, features=None)
+    )]
+    fn from_bytes(
+        _cls: &Bound<'_, PyType>,
+        name: String,
+        data: &Bound<'_, PyAny>,
+        size: Option<f32>,
+        weight: Option<u16>,
+        style: Option<String>,
+        variations: Option<HashMap<String, f32>>,
+        features: Option<HashMap<String, bool>>,
+    ) -> PyResult<Self> {
+        let bytes: Vec<u8> = data.extract()?;
+        Ok(Self {
+            family: name.clone(),
+            size: size.unwrap_or(16.0),
+            weight: weight.unwrap_or(400),
+            style: style.unwrap_or_else(|| "normal".to_string()),
+            source: FontSource::Bytes {
+                name,
+                data: Arc::from(bytes.into_boxed_slice()),
+            },
+            variations: variations.unwrap_or_default(),
+            features: features.unwrap_or_default(),
+        })
     }
 }
 

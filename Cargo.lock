@@ -553,6 +553,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fontdb"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "457e789b3d1202543297a350643cf459f836cade38934e7a4cf6a39e7cde2905"
+dependencies = [
+ "fontconfig-parser",
+ "log",
+ "memmap2",
+ "slotmap",
+ "tinyvec",
+ "ttf-parser 0.25.1",
+]
+
+[[package]]
 name = "foreign-types"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1043,6 +1057,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "o4e-fontdb"
+version = "0.1.0"
+dependencies = [
+ "dashmap",
+ "fontdb 0.23.0",
+ "log",
+ "o4e-core",
+ "once_cell",
+ "parking_lot",
+ "shellexpand",
+]
+
+[[package]]
 name = "o4e-icu-hb"
 version = "0.1.0"
 dependencies = [
@@ -1053,6 +1080,7 @@ dependencies = [
  "log",
  "lru",
  "o4e-core",
+ "o4e-fontdb",
  "o4e-render",
  "o4e-unicode",
  "owned_ttf_parser",
@@ -1061,7 +1089,6 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
- "shellexpand",
  "thiserror 1.0.69",
  "tiny-skia",
  "ttf-parser 0.24.1",
@@ -1081,6 +1108,7 @@ dependencies = [
  "log",
  "lru",
  "o4e-core",
+ "o4e-fontdb",
  "o4e-render",
  "o4e-unicode",
  "objc2",
@@ -1117,6 +1145,7 @@ dependencies = [
  "kurbo",
  "log",
  "o4e-core",
+ "o4e-fontdb",
  "owned_ttf_parser",
  "parking_lot",
  "rayon",
@@ -1867,6 +1896,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5be21190ff5d38e8b4a2d3b6a3ae57f612cc39c96e83cedeaf7abc338a8bac4a"
 
 [[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
+dependencies = [
+ "core_maths",
+]
+
+[[package]]
 name = "unicode-bidi"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1923,7 +1961,7 @@ dependencies = [
  "base64",
  "data-url",
  "flate2",
- "fontdb",
+ "fontdb 0.18.0",
  "imagesize",
  "kurbo",
  "log",

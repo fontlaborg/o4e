@@ -8,6 +8,18 @@ this_file: WORK.md
 
 ### Sprint Start: 2024-11-13
 
+## 2025-11-17 – Shared font database + FontSource plumbing
+
+### Notes
+- Introduced the `o4e-fontdb` crate to centralize system-font discovery, font-byte caching, and script fallback tables so every backend shares one resolver.
+- Extended `o4e-core::Font` with a `FontSource` enum plus helper constructors, then rewired HarfBuzz, CoreText, and the SVG renderer to hydrate fonts via the shared database instead of bespoke path probes.
+- Added Python-level `Font.from_path()` / `Font.from_bytes()` factories that remember the original source for cloning, updated the PyO3 bindings to forward variations/features, and documented the workflow in the README.
+- Taught the CoreText backend to build `CTFont` objects from raw bytes (using `CGDataProvider` + `CGFont`), enabling native macOS renders for fonts that only exist on disk or in memory.
+
+### Test log
+- `cargo test`
+- `pytest python/tests/test_api.py -vv`
+
 ## 2025-11-14 – SVG outline extraction
 
 ### Notes

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New `o4e-fontdb` crate that centralizes system font discovery and script fallback metadata, eliminating duplicate path resolution logic across backends.
+- `Font` now carries a `FontSource` enum (family/path/bytes); HarfBuzz, CoreText, and the SVG renderer load custom fonts directly from disk or memory via the shared database.
+- Python bindings expose `Font.from_path()` / `Font.from_bytes()` factory helpers that plumb through variations/features into the native renderer; the public README documents the new workflow.
+- CoreText backend can hydrate `CTFont` instances from raw font data (using `CGDataProvider` + `CGFont`), enabling `backend="coretext"` to render custom fonts in addition to system families.
 - Shared outline extraction between the ICU+HarfBuzz rasterizer and SVG renderer via the new `o4e-render::outlines` module, so both pipelines consume identical glyph path data.
 - Script-aware font fallback in the ICU+HarfBuzz backend, driven by prioritized Noto chains plus JSON fixtures for Arabic and Devanagari shaping regression tests.
 - ICU+HarfBuzz backend now retains font bytes via shared `Arc<[u8]>`, caches rasterized glyph alpha masks through `FontCache`, and includes regression tests to ensure cached glyphs are reused rather than rebuilt.

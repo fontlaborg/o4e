@@ -17,6 +17,7 @@ pub enum FontSource {
         /// Friendly name for diagnostics.
         name: String,
         /// Font data (owned, shared across clones).
+        #[serde(with = "arc_bytes")]
         data: Arc<[u8]>,
     },
 }
@@ -114,6 +115,26 @@ impl Font {
         self.family = source.family_name();
         self.source = source;
         self
+    }
+}
+
+mod arc_bytes {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(data: &Arc<[u8]>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bytes(data)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Arc<[u8]>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes = Vec::<u8>::deserialize(deserializer)?;
+        Ok(Arc::from(bytes.into_boxed_slice()))
     }
 }
 

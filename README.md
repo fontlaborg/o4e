@@ -64,6 +64,18 @@ for glyph in shaping.glyphs:
     print(f"Glyph {glyph.id}: advance={glyph.advance}, cluster={glyph.cluster}")
 ```
 
+### Loading custom fonts
+
+```python
+# Load a font directly from disk
+font = Font.from_path("/path/to/Inter-Regular.ttf", size=42)
+
+# Load a font from memory (e.g., downloaded or embedded)
+with open("MyVariableFont.ttf", "rb") as fh:
+    raw = fh.read()
+memory_font = Font.from_bytes("MyVariable", raw, size=36)
+```
+
 ## Advanced Usage
 
 ### Specifying Backends

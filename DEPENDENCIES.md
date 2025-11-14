@@ -38,6 +38,15 @@ This document lists all project dependencies and explains why each was chosen.
 - Minimal overhead
 - Standard crate for this use case
 
+#### `fontdb = "0.23"`
+**Purpose:** Shared system-font discovery and fallback data
+**Why chosen:**
+- Provides a cross-platform database over system font registries
+- Exposes CSS-style queries (family, weight, stretch) with fallback lists
+- Lets us resolve family names, file paths, or in-memory blobs without duplicating logic per backend
+- Pure Rust, battle-tested inside Servo/COSMIC text stack
+- Simpler than wiring `font-kit` everywhere and light enough to embed inside our own `o4e-fontdb` helper crate
+
 ### Text Shaping
 
 #### `harfbuzz_rs = "2.0"`

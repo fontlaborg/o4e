@@ -150,27 +150,74 @@ class Font:
         variations: Optional[Dict[str, float]] = None,
         features: Optional[Dict[str, bool]] = None,
     ):
-        """Create a new font specification.
-
-        Args:
-            family: Font family name or path to font file
-            size: Font size in pixels
-            weight: Font weight (100-900, 400=normal, 700=bold)
-            style: Font style ("normal", "italic", or "oblique")
-            variations: Variable font axes (e.g., {"wght": 700, "wdth": 100})
-            features: OpenType features (e.g., {"kern": True, "liga": False})
-
-        Examples:
-            >>> font = Font("Arial", 24)
-            >>> font = Font("/path/to/font.ttf", 16, weight=700)
-            >>> font = Font("Inter", 18, variations={"wght": 600})
-        """
+        """Create a new font specification."""
         if _Font is None:
             raise ImportError("o4e native module not available")
 
-        self._font = _Font(str(family), size, weight, style)
-        self.variations = variations or {}
-        self.features = features or {}
+        variations = variations or {}
+        features = features or {}
+        native = _Font(str(family), size, weight, style, variations, features)
+        self._init_from_native(native, ("family", str(family)), variations, features)
+
+    @classmethod
+    def from_path(
+        cls,
+        path: Union[str, Path],
+        size: float = 16.0,
+        weight: int = 400,
+        style: str = "normal",
+        variations: Optional[Dict[str, float]] = None,
+        features: Optional[Dict[str, bool]] = None,
+    ) -> 'Font':
+        """Create a font from a specific file path."""
+        if _Font is None:
+            raise ImportError("o4e native module not available")
+
+        variations = variations or {}
+        features = features or {}
+        native = _Font.from_path(str(path), size, weight, style, variations, features)
+        obj = cls.__new__(cls)
+        obj._init_from_native(native, ("path", str(path)), variations, features)
+        return obj
+
+    @classmethod
+    def from_bytes(
+        cls,
+        name: str,
+        data: Union[bytes, bytearray, memoryview, BinaryIO],
+        size: float = 16.0,
+        weight: int = 400,
+        style: str = "normal",
+        variations: Optional[Dict[str, float]] = None,
+        features: Optional[Dict[str, bool]] = None,
+    ) -> 'Font':
+        """Create a font from raw bytes."""
+        if _Font is None:
+            raise ImportError("o4e native module not available")
+
+        if hasattr(data, "read"):
+            payload = data.read()
+        else:
+            payload = bytes(data)
+
+        variations = variations or {}
+        features = features or {}
+        native = _Font.from_bytes(name, payload, size, weight, style, variations, features)
+        obj = cls.__new__(cls)
+        obj._init_from_native(native, ("bytes", name, payload), variations, features)
+        return obj
+
+    def _init_from_native(
+        self,
+        native_font: '_native.Font',
+        source: Tuple[str, ...],
+        variations: Dict[str, float],
+        features: Dict[str, bool],
+    ):
+        self._font = native_font
+        self._source = source
+        self.variations = dict(variations)
+        self.features = dict(features)
 
     @property
     def family(self) -> str:
@@ -194,16 +241,34 @@ class Font:
 
     def with_size(self, size: float) -> 'Font':
         """Create a copy with different size."""
-        return Font(self.family, size, self.weight, self.style,
-                   self.variations.copy(), self.features.copy())
+        return self._clone(size=size)
 
     def with_weight(self, weight: int) -> 'Font':
         """Create a copy with different weight."""
-        return Font(self.family, self.size, weight, self.style,
-                   self.variations.copy(), self.features.copy())
+        return self._clone(weight=weight)
+
+    def _clone(self, size: Optional[float] = None, weight: Optional[int] = None) -> 'Font':
+        kind = self._source[0]
+        args = {
+            "size": size if size is not None else self.size,
+            "weight": weight if weight is not None else self.weight,
+            "style": self.style,
+            "variations": self.variations.copy(),
+            "features": self.features.copy(),
+        }
+        if kind == "family":
+            return Font(self._source[1], **args)
+        if kind == "path":
+            return Font.from_path(self._source[1], **args)
+        if kind == "bytes":
+            return Font.from_bytes(self._source[1], self._source[2], **args)
+        raise ValueError(f"Unsupported font source {self._source}")
 
     def __repr__(self) -> str:
-        return f"Font(family={self.family!r}, size={self.size}, weight={self.weight}, style={self.style!r})"
+        return (
+            "Font(family={!r}, size={}, weight={}, style={!r})"
+            .format(self.family, self.size, self.weight, self.style)
+        )
 
 
 class TextRenderer:

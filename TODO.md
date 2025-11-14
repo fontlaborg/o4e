@@ -12,7 +12,7 @@ this_file: TODO.md
 - [x] [ICU+HB] Retain font bytes in `Arc<Vec<u8>>` (stop leaking), wrap them inside `Owned<HbFont<'static>>`, and hook `FontCache` glyph caching for reuse.
 - [x] [ICU+HB] Share outline extraction logic (ttf-parser → reusable path builder) so both tiny-skia rasterization and the SVG renderer consume the same path data.
 - [x] [ICU+HB] Implement script-aware font fallback (e.g., prioritized Noto list) and add shaping regression fixtures that compare glyph ID sequences to HarfBuzz reference JSON.
-- [ ] [Shared] Introduce a common font discovery/fallback crate, extend `Font` with a `FontSource` enum (family/path/bytes), and update every backend plus Python bindings to respect it.
+- [x] [Shared] Introduce a common font discovery/fallback crate, extend `Font` with a `FontSource` enum (family/path/bytes), and update every backend plus Python bindings to respect it.
 - [x] [Shared] Add cache diagnostics + tests ensuring each backend's `clear_cache()` truly empties mmap/face/shape/glyph caches.
 - [x] [Rendering] Implement `extract_glyph_path` in `crates/o4e-render::svg` using `ttf-parser` + `kurbo`, then add path simplification driven by `SvgOptions.precision`.
 - [ ] [Rendering] Support COLRv1/CPAL color fonts in SVG output and create `insta` snapshot tests for Latin, CJK, and emoji cases.

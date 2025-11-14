@@ -10,6 +10,7 @@ description = "CoreText backend for o4e text rendering"
 o4e-core = { path = "../o4e-core" }
 o4e-render = { path = "../../crates/o4e-render" }
 o4e-unicode = { path = "../../crates/o4e-unicode" }
+o4e-fontdb = { path = "../../crates/o4e-fontdb" }
 thiserror.workspace = true
 anyhow.workspace = true
 log.workspace = true
