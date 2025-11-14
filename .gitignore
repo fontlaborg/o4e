@@ -164,12 +164,14 @@ python/**/target/
 
 # Font files (if storing locally, not in repo)
 fonts/
+!testdata/fonts/
 *.ttf
 *.otf
 *.woff
 *.woff2
 !reference/**/*.ttf
 !reference/**/*.otf
+!testdata/fonts/*.ttf
 
 # Test outputs
 *.png

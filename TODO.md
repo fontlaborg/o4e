@@ -72,7 +72,7 @@ this_file: TODO.md
 - [x] Implement TrueType glyph rendering (using ttf-parser)
 - [x] Add glyph bitmap compositing
 - [x] Write unit tests for HarfBuzzBackend
-- [ ] Test complex script shaping
+- [x] Test complex script shaping
 - [x] Test bidirectional text
 
 ### Day 8-9: SVG Output Support

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ICU-driven segmentation in the HarfBuzz backend, covering grapheme clustering, hard line break detection, word boundary hints, script itemization, and bidi resolution.
 - Targeted unit tests covering mixed-script strings, bidi text, newline handling, and font fallback word boundaries.
 - Shared `o4e-unicode::TextSegmenter` crate so all backends can reuse the ICU/bidi segmentation logic with its own regression tests.
+- Complex script regression tests for Arabic (Noto Naskh) and Devanagari (Noto Sans Devanagari), including SIL OFL fixture fonts under `testdata/fonts/`, to lock in ICU+HarfBuzz contextual shaping.
 
 ### Added
 - PyO3 bindings now expose `Glyph`/`ShapingResult` classes and fully implement the `render`, `shape`, and `render_batch` methods so the Python API can exercise the Rust backend.
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pyproject.toml` now points maturin to `python/Cargo.toml`, enables the HarfBuzz feature set, and configures `pytest`/`hatch` so editable installs succeed.
 - `crates/o4e-render` declares its `parking_lot` dependency and satisfies ownership rules in the buffer pool utilities.
 - `o4e-python` compiles on PyO3 0.22 by switching to the new bound API; `cargo test` and the Python suite both pass on macOS.
+- ICU+HarfBuzz backend now maps Devanagari runs to the correct HarfBuzz script tag so Indic reordering works in complex-script tests.
 
 ## Sprint Summary: Multi-Backend Architecture Implementation (2024-11-13)
 

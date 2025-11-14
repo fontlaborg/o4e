@@ -373,3 +373,33 @@ Ready to proceed with platform-specific backend implementations.
 - Tests:
   - `cargo test` ✅ (warnings unchanged: existing cfg/unused-field notices in `o4e-core`, `o4e-pure`, `o4e-render`, and the deprecated `ttf_parser::Face::from_slice` call remain to be tackled separately).
   - `uvx hatch test` ⚠️ (still exits 5 with "collected 0 items" until we populate the Python test suite that Hatch looks for).
+
+## Work Log (2025-11-14)
+
+### Iteration Focus
+- Close TODO item “Test complex script shaping” by adding deterministic regression coverage for Arabic (rtl ligatures) and Devanagari (reordered marks) in the HarfBuzz backend.
+- Introduce any missing open-source fonts required for these tests under `testdata/fonts/` with licensing notes.
+- Keep tests-first flow: author regression tests, observe failure (if any), then adjust fixtures/implementation only as needed.
+
+### Immediate Tasks
+1. Acquire and document complex-script fonts (Arabic + Devanagari) for test determinism.
+2. Extend `backends/o4e-icu-hb` tests to assert shaping output (glyph ids/clusters/advances) for representative strings.
+3. Run `/test` command suite (`fd … ruff … uvx hatch test` + `cargo test` if needed) and capture results.
+4. Update CHANGELOG/TODO/PLAN entries plus this log with outcomes and follow-up risks.
+
+### Risk Notes
+- Font licensing/completeness must be verified (SIL OFL) before committing.
+- HarfBuzz glyph IDs are font-specific; assertions should be resilient yet precise enough to detect regressions.
+
+### Implementation Notes
+- Downloaded SIL OFL fonts `NotoNaskhArabic-Regular.ttf` and `NotoSansDevanagari-Regular.ttf` into `testdata/fonts/` and documented their provenance for deterministic fixtures.
+- Added helper font loader + two regression tests in `backends/o4e-icu-hb/src/lib.rs` covering Arabic contextual shaping (ligatures + RTL clusters) and Devanagari mark reordering.
+- Fixed HarfBuzz backend script handling by mapping `run.script` strings to proper HarfBuzz tags (added `Devanagari` case) so Indic scripts shape correctly.
+
+### Verification (2025-11-14)
+- `fd -e py -x uvx autoflake -i {}` ✅ (no issues).
+- `fd -e py -x uvx pyupgrade --py312-plus {}` ⚠️ first run exited 1 after rewriting files; reran immediately and it passed (0).
+- `fd -e py -x uvx ruff check --output-format=github --fix --unsafe-fixes {}` ❌ fails on pre-existing warnings (e.g., `S108` insecure tmp path literals in `reference/haforu/python/tests/test_errors.py`, multiple unused `numpy` imports, E402 layout issues, undefined `session` fixture). Restored auto edits to keep scope focused.
+- `fd -e py -x uvx ruff format --respect-gitignore --target-version py312 {}` ✅ (brief formatting churn reverted post-run to avoid unrelated diffs).
+- `uvx hatch test` ⚠️ exits with status 5 because no Python tests are collected yet (known gap documented previously).
+- `cargo test -p o4e-icu-hb` ✅ now includes the new complex-script regressions (only existing warnings about unused fields/deprecated APIs remain).

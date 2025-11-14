@@ -193,6 +193,23 @@ impl HarfBuzzBackend {
 
         Ok(hb_font)
     }
+
+    fn script_tag(script: &str) -> Tag {
+        let lower = script.to_ascii_lowercase();
+        match lower.as_str() {
+            "latin" => Tag::new('L', 'a', 't', 'n'),
+            "arabic" => Tag::new('A', 'r', 'a', 'b'),
+            "hebrew" => Tag::new('H', 'e', 'b', 'r'),
+            "cyrillic" => Tag::new('C', 'y', 'r', 'l'),
+            "greek" => Tag::new('G', 'r', 'e', 'k'),
+            "han" => Tag::new('H', 'a', 'n', 'i'),
+            "hiragana" => Tag::new('H', 'i', 'r', 'a'),
+            "katakana" => Tag::new('K', 'a', 'n', 'a'),
+            "thai" => Tag::new('T', 'h', 'a', 'i'),
+            "devanagari" => Tag::new('D', 'e', 'v', 'a'),
+            _ => Tag::new('L', 'a', 't', 'n'),
+        }
+    }
 }
 
 impl Backend for HarfBuzzBackend {
@@ -204,19 +221,7 @@ impl Backend for HarfBuzzBackend {
         let hb_font = self.get_or_create_hb_font(font)?;
 
         // Create script tag from script name
-        // Common scripts mapping - extend as needed
-        let script_tag = match run.script.as_str() {
-            "Latin" | "latin" => Tag::new('L', 'a', 't', 'n'),
-            "Arabic" | "arabic" => Tag::new('A', 'r', 'a', 'b'),
-            "Hebrew" | "hebrew" => Tag::new('H', 'e', 'b', 'r'),
-            "Cyrillic" | "cyrillic" => Tag::new('C', 'y', 'r', 'l'),
-            "Greek" | "greek" => Tag::new('G', 'r', 'e', 'k'),
-            "Han" | "han" => Tag::new('H', 'a', 'n', 'i'),
-            "Hiragana" | "hiragana" => Tag::new('H', 'i', 'r', 'a'),
-            "Katakana" | "katakana" => Tag::new('K', 'a', 'n', 'a'),
-            "Thai" | "thai" => Tag::new('T', 'h', 'a', 'i'),
-            _ => Tag::new('L', 'a', 't', 'n'), // Default to Latin
-        };
+        let script_tag = Self::script_tag(&run.script);
 
         // Create HarfBuzz buffer
         let buffer = UnicodeBuffer::new()
@@ -391,6 +396,20 @@ impl Default for HarfBuzzBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_font_path(name: &str) -> String {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        PathBuf::from(manifest_dir)
+            .join("../../testdata/fonts")
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn fixture_font(name: &str) -> Font {
+        Font::new(fixture_font_path(name), 48.0)
+    }
 
     #[test]
     fn test_backend_creation() {
@@ -442,5 +461,85 @@ mod tests {
         options.font_fallback = true;
         let runs = backend.segment("Word One", &options).unwrap();
         assert!(runs.len() >= 2);
+    }
+
+    #[test]
+    fn test_shape_arabic_text_produces_contextual_forms() {
+        let backend = HarfBuzzBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+        options.bidi_resolve = true;
+        options.language = Some("ar".to_string());
+        let text = "مرحبا بالعالم";
+
+        let runs = backend.segment(text, &options).unwrap();
+        assert_eq!(runs.len(), 1, "Arabic text should stay in a single run");
+        let run = &runs[0];
+        assert_eq!(
+            run.direction,
+            Direction::RightToLeft,
+            "Arabic run must resolve to RTL"
+        );
+
+        let font = fixture_font("NotoNaskhArabic-Regular.ttf");
+        let shaped = backend.shape(run, &font).expect("Arabic shaping succeeds");
+        let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
+        let expected_ids = vec![486, 452, 4, 309, 452, 4, 38, 1374, 4, 37, 140, 212, 488];
+        assert_eq!(
+            glyph_ids, expected_ids,
+            "Arabic contextual glyph ids regressed"
+        );
+
+        let clusters: Vec<u32> = shaped.glyphs.iter().map(|g| g.cluster).collect();
+        assert!(
+            clusters.windows(2).all(|pair| pair[0] > pair[1]),
+            "Arabic clusters should decrease for RTL text: {clusters:?}"
+        );
+        assert_eq!(
+            clusters.last(),
+            Some(&0),
+            "Arabic clusters must end at byte offset 0"
+        );
+        assert!(
+            shaped.advance > 0.0 && shaped.bbox.width > 0.0,
+            "Arabic shaping should produce measurable geometry"
+        );
+    }
+
+    #[test]
+    fn test_shape_devanagari_text_reorders_marks() {
+        let backend = HarfBuzzBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+        options.bidi_resolve = true;
+        options.language = Some("hi".to_string());
+        let text = "कक्षा में";
+
+        let runs = backend.segment(text, &options).unwrap();
+        assert_eq!(runs.len(), 1, "Devanagari text should be a single run");
+        let run = &runs[0];
+        assert_eq!(run.script, "Devanagari");
+        assert_eq!(run.direction, Direction::LeftToRight);
+
+        let font = fixture_font("NotoSansDevanagari-Regular.ttf");
+        let shaped = backend.shape(run, &font).expect("Devanagari shaping succeeds");
+        let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
+        let expected_ids = vec![25, 179, 66, 3, 50, 449];
+        assert_eq!(glyph_ids, expected_ids, "Devanagari glyph ids changed");
+
+        let clusters: Vec<u32> = shaped.glyphs.iter().map(|g| g.cluster).collect();
+        assert!(
+            clusters.windows(2).all(|pair| pair[0] <= pair[1]),
+            "LTR clusters must be non-decreasing: {clusters:?}"
+        );
+
+        assert_eq!(
+            shaped.glyphs[1].cluster, shaped.glyphs[2].cluster,
+            "AA matra must attach to the conjunct cluster"
+        );
+        assert!(
+            shaped.glyphs.iter().any(|g| g.advance == 0.0),
+            "At least one mark should have zero advance after reordering"
+        );
     }
 }

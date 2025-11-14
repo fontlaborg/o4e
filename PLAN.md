@@ -322,6 +322,8 @@ impl Backend for HarfBuzzBackend {
 }
 ```
 
+**Status 2025-11-14:** Added deterministic HarfBuzz regression tests for Arabic (Noto Naskh) and Devanagari (Noto Sans Devanagari) runs so the "Test complex script shaping" milestone is complete.
+
 ### Day 8-9: SVG Output Support
 
 #### Step 9: SVG Generation (crates/o4e-render/src/svg.rs)
