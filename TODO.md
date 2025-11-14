@@ -2,27 +2,38 @@
 this_file: TODO.md
 ---
 
-- [x] [CoreText] Extract real glyph IDs/positions from `CTRunGetGlyphs` and populate `ShapingResult` instead of using character-code placeholders.
-- [x] [CoreText] Build `CTFontDescriptor` instances with weight/style/variation axes, cache them by `(family,size,variations)`, and feed the descriptor into `CTFontCreateCopyWithAttributes`.
-- [x] [CoreText] Implement run-level font fallback by resolving missing glyphs via CoreText font descriptors and annotating `TextRun.font` before shaping.
-- [x] [CoreText] Render shaped glyphs with `CTFontDrawGlyphs`, mapping `RenderOptions` antialias/background settings to CoreGraphics and adding PNG snapshot tests for Latin + Arabic strings.
-- [x] [DirectWrite] Use `IDWriteTextAnalyzer1` (`AnalyzeScript`, `AnalyzeBidi`, `AnalyzeLineBreakpoints`) to generate accurate `TextRun`s with script/direction metadata.
-- [x] [DirectWrite] Collect glyph data from `IDWriteGlyphRun` callbacks, store true glyph IDs/advances/clusters, and remove the placeholder text drawing path.
-- [x] [DirectWrite] Support ClearType and grayscale output toggles plus OpenType feature/variation mapping via `IDWriteFontFace5`, with integration tests that hash the resulting pixel buffers.
-- [x] [ICU+HB] Retain font bytes in `Arc<Vec<u8>>` (stop leaking), wrap them inside `Owned<HbFont<'static>>`, and hook `FontCache` glyph caching for reuse.
-- [x] [ICU+HB] Share outline extraction logic (ttf-parser → reusable path builder) so both tiny-skia rasterization and the SVG renderer consume the same path data.
-- [x] [ICU+HB] Implement script-aware font fallback (e.g., prioritized Noto list) and add shaping regression fixtures that compare glyph ID sequences to HarfBuzz reference JSON.
-- [x] [Shared] Introduce a common font discovery/fallback crate, extend `Font` with a `FontSource` enum (family/path/bytes), and update every backend plus Python bindings to respect it.
-- [x] [Shared] Add cache diagnostics + tests ensuring each backend's `clear_cache()` truly empties mmap/face/shape/glyph caches.
-- [x] [Rendering] Implement `extract_glyph_path` in `crates/o4e-render::svg` using `ttf-parser` + `kurbo`, then add path simplification driven by `SvgOptions.precision`.
-- [ ] [Rendering] Support COLRv1/CPAL color fonts in SVG output and create `insta` snapshot tests for Latin, CJK, and emoji cases.
-- [ ] [Rendering] Introduce a `RenderSurface` abstraction to normalize BGRA↔RGBA conversion and alpha premultiplication across CoreText/DirectWrite/ICU+HB.
-- [ ] [Batch/Perf] Extend `BatchRenderer` progress reporting with latency percentiles, add criterion benches for 100/1k/10k jobs, and document results in `perf/benchmarks.md`.
-- [ ] [Python] Implement backend auto-selection plus manual overrides in `TextRenderer.__init__`, expose `TextSegmenter`, and add streaming batch helpers with complete docstrings.
-- [ ] [Python] Support `Font.from_path`/`Font.from_bytes`, propagate variations/features, and ensure `RenderOutput` can return Pillow/Numpy-friendly objects.
-- [ ] [Python] Expand `python/tests` to cover render, shape, batch, fallback, and error flows using bundled SIL fonts; wire the suite into `uvx hatch test`.
-- [ ] [Packaging] Align `pyproject.toml` extras with backend cargo features, add `build.rs` gating for maturin builds, and document install commands in README.
-- [ ] [Examples] Turn `examples/basic_render.py`, `test_png_output.py`, and new SVG/segmenter demos into functional tests runnable via `./test.sh`.
-- [ ] [Docs] Keep `README.md` under 200 lines, add `docs/backends.md`, and update `CHANGELOG.md`, `WORK.md`, and `DEPENDENCIES.md` after every meaningful change.
-- [ ] [CI/CD] Update GitHub Actions to run `cargo fmt`, `cargo clippy --all-targets --all-features`, `cargo test`, `uvx hatch test`, plus tag-triggered release jobs that publish crates + wheels.
-- [ ] [Quality] Add fuzz targets for glyph outline parsing + HarfBuzz feature inputs, schedule nightly runs, and capture failures in `WORK.md`.
+# TODO
+
+## Code Simplification
+- [x] Remove fuzz/ directory
+- [x] Remove .github/workflows/fuzz.yml
+- [x] Remove backends/o4e-core/src/diagnostics.rs
+- [x] Remove benches/ directory
+- [x] Remove RenderOptionsDiagnostics from all backend imports and usage
+- [x] Remove benchmark configuration from Cargo.toml
+
+## Testing & Verification
+- [x] Run cargo test --workspace
+- [x] Run pytest python/tests -v
+- [x] Verify all 13 tests still pass
+- [ ] Check memory usage (< 50MB target)
+- [ ] Measure render times (< 1ms target)
+
+## Documentation Cleanup
+- [ ] Review README.md (keep under 150 lines)
+- [ ] Remove verbose comments from code
+- [ ] Update examples/basic_render.py to be minimal
+- [ ] Remove examples/convert_to_png.py if not needed
+
+## Packaging
+- [ ] Test wheel build on macOS
+- [ ] Test wheel build on Windows
+- [ ] Test wheel build on Linux
+- [ ] Verify pip install works
+- [ ] Check dependency list is minimal
+
+## Release Preparation
+- [ ] Update CHANGELOG.md with v0.1.0 notes
+- [ ] Create git tag v0.1.0
+- [ ] Build release wheels
+- [ ] Test installation from wheel

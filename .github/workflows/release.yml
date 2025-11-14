@@ -109,11 +109,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libicu-dev libharfbuzz-dev libfreetype6-dev
 
+    - name: Set platform features (macOS)
+      if: runner.os == 'macOS'
+      run: echo "FEATURES=python,mac,icu" >> $GITHUB_ENV
+
+    - name: Set platform features (Windows)
+      if: runner.os == 'Windows'
+      run: echo "FEATURES=python,windows,icu" >> $env:GITHUB_ENV
+
+    - name: Set platform features (Linux)
+      if: runner.os == 'Linux'
+      run: echo "FEATURES=python,icu" >> $GITHUB_ENV
+
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         command: build
-        args: --release --interpreter python${{ matrix.python }}
+        args: --release --interpreter python${{ matrix.python }} --features ${{ env.FEATURES }}
 
     - name: Upload wheels
       uses: actions/upload-artifact@v3

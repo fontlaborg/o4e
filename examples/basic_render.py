@@ -1,59 +1,48 @@
 #!/usr/bin/env python3
 # this_file: examples/basic_render.py
+"""Basic rendering example for o4e."""
 
-"""Basic example of rendering text with o4e."""
+import sys
 
-import o4e
-from pathlib import Path
+try:
+    import o4e
+except ImportError:
+    print("Error: o4e not installed. Install with: pip install o4e")
+    sys.exit(1)
+
 
 def main():
-    # Print version
-    print(f"o4e version: {o4e.get_version()}")
+    """Demonstrate basic text rendering."""
+    # Create renderer with auto backend selection
+    renderer = o4e.TextRenderer()
 
-    # Create a renderer with HarfBuzz backend
-    renderer = o4e.TextRenderer(backend="harfbuzz")
+    print(f"Using backend: {renderer.backend}")
+    print(f"o4e version: {o4e.__version__}")
 
-    # Create a font specification
-    # Use Helvetica which is available on macOS
-    font = o4e.Font(
-        family="/System/Library/Fonts/Helvetica.ttc",  # Full path to font
-        size=48.0,
-        weight=400,
-        style="normal"
-    )
+    # Render simple text
+    font = o4e.Font("Arial", 48.0)
 
-    # Render some text
-    text = "Hello, o4e!"
-    print(f"Rendering: {text}")
-
-    try:
-        bitmap_data = renderer.render(text, font)
-        print(f"Successfully rendered {len(bitmap_data)} bytes of bitmap data")
-
-        # Save to file (raw RGBA data)
-        output_file = Path("output.rgba")
-        output_file.write_bytes(bytes(bitmap_data))
-        print(f"Saved raw bitmap to {output_file}")
-
-    except Exception as e:
-        print(f"Error rendering: {e}")
-
-    # Test different scripts
-    test_texts = [
-        ("Latin", "Hello World"),
-        ("Cyrillic", "Привет мир"),
-        ("Greek", "Γειά σου κόσμε"),
-        ("CJK", "你好世界"),
-        ("Arabic", "مرحبا بالعالم"),
+    texts = [
+        "Hello World!",
+        "Привет мир",  # Russian
+        "Γειά σου κόσμε",  # Greek
+        "مرحبا بالعالم",  # Arabic
+        "你好世界",  # Chinese
     ]
 
-    for script, text in test_texts:
-        print(f"\nTesting {script}: {text}")
+    print("\nRendering test texts...")
+    for text in texts:
         try:
-            bitmap_data = renderer.render(text, font)
-            print(f"  ✓ Rendered {len(bitmap_data)} bytes")
+            result = renderer.render(text, font, format="raw")
+            if result:
+                print(f"  ✓ {text[:20]}... -> {len(result)} bytes")
+            else:
+                print(f"  ✗ {text[:20]}... -> No output")
         except Exception as e:
-            print(f"  ✗ Failed: {e}")
+            print(f"  ✗ {text[:20]}... -> Error: {e}")
+
+    print("\n✓ Basic rendering test complete")
+
 
 if __name__ == "__main__":
     main()

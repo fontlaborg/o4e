@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Example scripts (`examples/basic_render.py`, `examples/test_png_output.py`) that demonstrate rendering functionality and serve as functional tests.
+
+### Fixed
+- Fixed clippy warnings in `o4e-pure` (unused imports, cfg warnings, uppercase acronym).
+- Fixed clippy warnings in `o4e-render` (`len_zero`, redundant closure, missing safety docs, too many arguments).
+- Fixed clippy warnings in `o4e-mac` and `o4e-icu-hb` (redundant closures, needless borrow, dead code).
+- Fixed Python integration tests to work with immutable Font objects.
+- Fixed test.sh to use absolute paths for reliable test execution.
+- All tests now pass: 13/13 including Rust unit tests, Python integration tests, and functional tests.
+
+### Previous Sprint
+
+### Added
+- Fuzzing infrastructure with three cargo-fuzz targets in `fuzz/fuzz_targets/`: `fuzz_glyph_outline` (tests glyph outline parsing robustness with malformed fonts), `fuzz_harfbuzz_features` (tests OpenType feature combinations and shaping inputs), and `fuzz_font_parsing` (tests comprehensive font file parsing). Configured with nightly GitHub Actions workflow (`.github/workflows/fuzz.yml`) that automatically creates issues for crashes, caches corpus for improved coverage, and uploads crash artifacts.
+- Comprehensive integration test suite (`python/tests/test_integration.py`) covering real backend rendering, shaping, batch processing, font fallback, error handling, and cache operations.
+- Functional test runner (`test.sh`) that executes Rust tests, Python tests, and example scripts as functional tests with detailed reporting.
+- Backend architecture documentation (`docs/backends.md`) with detailed comparison of CoreText, DirectWrite, and ICU+HarfBuzz backends.
+- `RenderSurface` abstraction in `o4e-core` for unified BGRA↔RGBA conversion, grayscale expansion, premultiplied alpha handling, and PNG encoding across all backends.
+- Batch renderer now includes latency percentiles (p50, p90, p99) via `hdrhistogram` and reports them in progress callbacks.
+- Comprehensive benchmark suite in `benches/` covering batch sizes (100, 1k, 10k), parallel vs sequential, cache effectiveness, and mixed scripts.
+- Python backend auto-selection now documented: automatically selects CoreText on macOS, DirectWrite on Windows, and ICU+HarfBuzz on Linux.
 - New `o4e-fontdb` crate that centralizes system font discovery and script fallback metadata, eliminating duplicate path resolution logic across backends.
 - `Font` now carries a `FontSource` enum (family/path/bytes); HarfBuzz, CoreText, and the SVG renderer load custom fonts directly from disk or memory via the shared database.
 - Python bindings expose `Font.from_path()` / `Font.from_bytes()` factory helpers that plumb through variations/features into the native renderer; the public README documents the new workflow.
@@ -23,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DirectWrite backend honors `RenderOptions.antialias` ClearType vs grayscale toggles, maps `Font.features` and variable font axes into DirectWrite via `IDWriteFontFace5`, and adds bitmap-hash regression tests for antialias, ligature, and variation scenarios.
 - `build.sh` and `run.sh` helper scripts: the former runs formatting, workspace clippy/test/build (skipping the PyO3 crate), creates the Python wheel via `uvx maturin`, and builds `reference/haforu`, while the latter feeds JSONL jobs from `testdata/fonts` through the haforu CLI and smoke-tests the freshly built Python wheel.
 - SVG renderer now extracts real glyph outlines via `ttf-parser`/`kurbo`, simplifying them based on `SvgOptions.precision` and covering the flow with fixture-backed tests.
+- Added focused unit tests for the shared `RenderSurface` abstraction so BGRA↔RGBA conversion, grayscale expansion, premultiplied alpha handling, and PNG encoding stay consistent across all backends.
 - Regression tests for the CoreText backend covering Latin, Arabic (RTL), and CJK segmentation to lock in script metadata expectations.
 - CoreText rendering regression tests that draw Latin (Helvetica), Arabic (Geeza Pro), and CJK (PingFang SC) samples to ensure macOS output reflects the requested strings.
 - SVG renderer fallbacks that emit rectangles when glyph paths are unavailable along with tests for simple/complex layouts and structural validity.
@@ -32,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared `o4e-unicode::TextSegmenter` crate so all backends can reuse the ICU/bidi segmentation logic with its own regression tests.
 - Complex script regression tests for Arabic (Noto Naskh) and Devanagari (Noto Sans Devanagari), including SIL OFL fixture fonts under `testdata/fonts/`, to lock in ICU+HarfBuzz contextual shaping.
 - `FontCache` now exposes `is_empty()` diagnostics and regression tests exercise `clear_cache()` for the HarfBuzz, CoreText (macOS), and DirectWrite (Windows) backends to ensure all cached layers drain correctly.
+- SVG renderer now renders COLRv1/CPAL color fonts end-to-end (palette selection, gradient and clip emission, and per-run `<defs>` generation) with new `SvgOptions` controls for enabling color fonts, palette index selection, and foreground color overrides.
+- Added Insta-based SVG snapshots for Latin, CJK, and emoji strings backed by the bundled Noto Sans CJK + Noto Color Emoji COLRv1 fonts so color regressions are caught automatically in CI.
 
 ### Added
 - PyO3 bindings now expose `Glyph`/`ShapingResult` classes and fully implement the `render`, `shape`, and `render_batch` methods so the Python API can exercise the Rust backend.
@@ -39,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - macOS CoreText backend snapshot + glyph regression tests (Latin + Arabic) plus the stored PNG artifact under `testdata/expected/coretext/`.
 
 ### Changed
+- README.md condensed to under 200 lines per project guidelines, with detailed content moved to `docs/backends.md`.
+- `pyproject.toml` extras now document backend feature compilation and include inline comments explaining how platform-specific backends are selected at build time.
 - `ShapingResult` now carries a `direction` flag so caches/renderers preserve bidi context and DirectWrite can rebuild accurate glyph runs.
 - `ShapingResult` now stores the original run text (propagated through batch utilities and PyO3 bindings) so renderers can faithfully replay shaped strings.
 - CoreText rendering consumes the shaped string instead of a hard-coded placeholder, guaranteeing that exported bitmaps/PNGs carry the requested text.

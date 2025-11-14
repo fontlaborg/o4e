@@ -172,6 +172,7 @@ fonts/
 !reference/**/*.ttf
 !reference/**/*.otf
 !testdata/fonts/*.ttf
+!testdata/fonts/*.otf
 
 # Test outputs
 *.png

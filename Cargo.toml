@@ -5,6 +5,9 @@ members = [
     "crates/*",
     "python",
 ]
+exclude = [
+    "fuzz",
+]
 
 [package]
 name = "o4e"
@@ -24,18 +27,6 @@ o4e-mac = { path = "backends/o4e-mac" }
 
 [target.'cfg(windows)'.dependencies]
 o4e-win = { path = "backends/o4e-win" }
-
-[dev-dependencies]
-criterion = "0.5"
-rayon.workspace = true
-
-[[bench]]
-name = "single_render"
-harness = false
-
-[[bench]]
-name = "batch_render"
-harness = false
 
 [workspace.package]
 version = "0.1.0"

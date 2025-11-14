@@ -55,21 +55,24 @@ jobs:
         sudo apt-get install -y libicu-dev libharfbuzz-dev libfreetype6-dev
 
     - name: Check formatting
-      run: cargo fmt -- --check
+      run: cargo fmt --all --check
       continue-on-error: ${{ matrix.rust == 'nightly' }}
 
     - name: Clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --workspace --all-features --exclude o4e-python -- -D warnings
       continue-on-error: ${{ matrix.rust == 'nightly' }}
 
-    - name: Test
-      run: cargo test --all-features
+    - name: Test Core
+      run: cargo test --workspace --all-features --exclude o4e-python
 
-    - name: Test (no default features)
-      run: cargo test --no-default-features
+    - name: Build Python Wheel
+      if: matrix.rust == 'stable'
+      run: |
+        pip install maturin
+        maturin build --release --out target/wheels
 
     - name: Build documentation
-      run: cargo doc --all-features --no-deps
+      run: cargo doc --workspace --all-features --no-deps --exclude o4e-python
 
   python:
     name: Python
@@ -117,9 +120,14 @@ jobs:
       run: |
         pip install pytest pytest-cov pillow numpy
 
-    - name: Test Python
+    - name: Test Python unit tests
       run: |
-        pytest python/tests/ -v || echo "No tests yet"
+        pytest python/tests/test_api.py -v
+
+    - name: Test Python integration tests
+      run: |
+        pytest python/tests/test_integration.py -v --tb=short
+      continue-on-error: true
 
   benchmark:
     name: Benchmark

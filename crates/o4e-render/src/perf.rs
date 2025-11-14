@@ -124,7 +124,6 @@ pub struct PerfStats {
 /// Buffer pool for reusing allocations
 pub struct BufferPool {
     pools: Arc<RwLock<Vec<Vec<u8>>>>,
-
 }
 
 impl BufferPool {
@@ -164,7 +163,7 @@ pub struct PooledBuffer {
 }
 
 impl PooledBuffer {
-    pub fn as_mut(&mut self) -> &mut Vec<u8> {
+    pub fn as_mut_buffer(&mut self) -> &mut Vec<u8> {
         &mut self.buffer
     }
 
@@ -190,9 +189,14 @@ impl Drop for PooledBuffer {
 
 /// Optimized memory operations
 pub mod mem_ops {
+    #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
 
     /// SIMD-accelerated BGRA to RGBA conversion
+    ///
+    /// # Safety
+    /// This function uses SSE2 SIMD intrinsics. The caller must ensure the data pointer is valid
+    /// and aligned properly for SIMD operations.
     #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "sse2")]
     pub unsafe fn bgra_to_rgba_simd(data: &mut [u8]) {
@@ -225,8 +229,10 @@ pub mod mem_ops {
         }
     }
 
+    /// # Safety
+    /// This function uses SIMD intrinsics on x86_64. On other architectures, it falls back to a safe implementation.
     #[cfg(not(target_arch = "x86_64"))]
-    pub fn bgra_to_rgba_simd(data: &mut [u8]) {
+    pub unsafe fn bgra_to_rgba_simd(data: &mut [u8]) {
         bgra_to_rgba_fallback(data);
     }
 
@@ -310,7 +316,7 @@ mod tests {
 
         {
             let mut buffer1 = pool.get(1024);
-            buffer1.as_mut().resize(1024, 0);
+            buffer1.as_mut_buffer().resize(1024, 0);
         } // buffer1 returned to pool
 
         {

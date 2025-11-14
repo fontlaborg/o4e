@@ -1,51 +1,46 @@
 #!/usr/bin/env python3
 # this_file: examples/test_png_output.py
+"""PNG output test for o4e."""
 
-"""Test PNG output format from o4e."""
-
-import o4e
+import sys
 from pathlib import Path
 
-def test_png_output():
-    """Test rendering text directly to PNG."""
-    print(f"o4e version: {o4e.get_version()}")
+try:
+    import o4e
+except ImportError:
+    print("Error: o4e not installed. Install with: pip install o4e")
+    sys.exit(1)
 
-    # Create a renderer
-    renderer = o4e.TextRenderer(backend="harfbuzz")
 
-    # Create a font
-    font = o4e.Font(
-        family="/System/Library/Fonts/Helvetica.ttc",
-        size=48.0,
-        weight=400,
-        style="normal"
-    )
+def main():
+    """Test PNG rendering and save to file."""
+    # Create renderer
+    renderer = o4e.TextRenderer()
 
-    # Test texts
-    texts = [
-        ("Hello o4e!", "hello.png"),
-        ("Testing PNG", "test.png"),
-        ("你好世界", "chinese.png"),
-        ("مرحبا", "arabic.png"),
-    ]
+    print(f"Using backend: {renderer.backend}")
 
-    for text, filename in texts:
-        print(f"Rendering '{text}' to {filename}...")
-        try:
-            # Request PNG format
-            result = renderer.render(text, font, output_format="png")
+    # Create font
+    font = o4e.Font("Arial", 64.0)
 
-            if isinstance(result, (bytes, bytearray, list)):
-                # Convert to bytes if needed
-                if isinstance(result, list):
-                    result = bytes(result)
-                # Save the PNG data
-                Path(filename).write_bytes(result)
-                print(f"  ✓ Saved {len(result)} bytes to {filename}")
-            else:
-                print(f"  Got unexpected result type: {type(result)}")
-        except Exception as e:
-            print(f"  ✗ Error: {e}")
+    # Render to PNG
+    print("\nRendering 'Hello, World!' to PNG...")
+    try:
+        png_data = renderer.render("Hello, World!", font, format="png")
+
+        if png_data:
+            # Save to file (we're already in the examples directory)
+            output_path = Path("hello.png")
+            output_path.write_bytes(png_data)
+            print(f"  ✓ Saved PNG to {output_path} ({len(png_data)} bytes)")
+        else:
+            print("  ✗ No PNG data returned")
+            sys.exit(1)
+    except Exception as e:
+        print(f"  ✗ Error: {e}")
+        sys.exit(1)
+
+    print("\n✓ PNG output test complete")
+
 
 if __name__ == "__main__":
-    test_png_output()
+    main()

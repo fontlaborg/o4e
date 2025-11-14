@@ -149,3 +149,69 @@ fn encode_png(width: u32, height: u32, data: &[u8]) -> Result<Vec<u8>> {
     } // writer and encoder are dropped here
     Ok(png_data)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{RenderFormat, RenderOutput};
+
+    fn bitmap_data(output: RenderOutput) -> Vec<u8> {
+        match output {
+            RenderOutput::Bitmap(bitmap) => bitmap.data,
+            other => panic!("expected bitmap output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bgra_surface_converts_and_unpremultiplies() {
+        let surface = RenderSurface::from_bgra(1, 1, vec![16, 32, 64, 128], true);
+        let data = bitmap_data(surface.into_render_output(RenderFormat::Raw).unwrap());
+        assert_eq!(data, vec![127, 63, 31, 128]);
+    }
+
+    #[test]
+    fn gray_surface_expands_to_rgba() {
+        let surface = RenderSurface::from_gray(3, 1, vec![0, 128, 255]);
+        let data = bitmap_data(surface.into_render_output(RenderFormat::Raw).unwrap());
+        assert_eq!(
+            data,
+            vec![0, 0, 0, 255, 128, 128, 128, 255, 255, 255, 255, 255,]
+        );
+    }
+
+    #[test]
+    fn rgba_surface_respects_premultiplication_flag() {
+        let surface = RenderSurface::from_rgba(1, 1, vec![10, 20, 30, 40], false);
+        let data = bitmap_data(surface.into_render_output(RenderFormat::Raw).unwrap());
+        assert_eq!(data, vec![10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn png_encoding_round_trips_pixels() {
+        let surface = RenderSurface::from_rgba(1, 1, vec![5, 6, 7, 8], false);
+        let output = surface.into_render_output(RenderFormat::Png).unwrap();
+        let png_bytes = match output {
+            RenderOutput::Png(bytes) => bytes,
+            other => panic!("expected png output, got {other:?}"),
+        };
+
+        let decoder = png::Decoder::new(png_bytes.as_slice());
+        let mut reader = decoder.read_info().unwrap();
+        let mut buf = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        assert_eq!(info.width, 1);
+        assert_eq!(info.height, 1);
+        assert_eq!(&buf[..4], &[5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn svg_conversion_returns_error() {
+        let surface = RenderSurface::from_rgba(1, 1, vec![0, 0, 0, 0], false);
+        let err = surface
+            .into_render_output(RenderFormat::Svg)
+            .expect_err("SVG conversion should fail for bitmap surfaces");
+        assert!(err
+            .to_string()
+            .contains("RenderSurface cannot be converted to SVG output"));
+    }
+}

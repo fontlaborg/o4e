@@ -34,11 +34,22 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-mac = []  # CoreText backend
-windows = []  # DirectWrite backend
-icu = []  # ICU+HarfBuzz backend
-skia = []  # Skia backend
-all = ["o4e[mac,windows,icu,skia]"]
+# Note: Backend selection is handled at build time via cargo features.
+# These extras are provided for documentation and potential future use.
+# The appropriate backend is compiled into the wheel for each platform:
+#   - macOS wheels include CoreText (feature: mac)
+#   - Windows wheels include DirectWrite (feature: windows)
+#   - Linux/other wheels include ICU+HarfBuzz (feature: icu)
+#
+# Users should install: pip install o4e
+# Advanced users can build from source with specific features:
+#   - pip install o4e --no-binary o4e (uses platform defaults)
+#
+mac = []      # CoreText backend (macOS only, compiled in by default on macOS)
+windows = []  # DirectWrite backend (Windows only, compiled in by default on Windows)
+icu = []      # ICU+HarfBuzz cross-platform backend (default on Linux)
+skia = []     # Skia backend (future)
+all = []      # All available backends for the current platform
 dev = [
     "pytest>=7.0",
     "pytest-benchmark",
@@ -56,6 +67,11 @@ Issues = "https://github.com/fontlaborg/o4e/issues"
 [tool.maturin]
 python-source = "python"
 manifest-path = "python/Cargo.toml"
+# Default features: python (required) + icu (cross-platform fallback)
+# Platform-specific features should be added via --features flag in CI:
+#   macOS: --features "python,mac,icu"
+#   Windows: --features "python,windows,icu"
+#   Linux: --features "python,icu"
 features = ["python", "icu"]
 bindings = "pyo3"
 

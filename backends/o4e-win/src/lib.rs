@@ -6,8 +6,8 @@
 
 use o4e_core::{
     types::{AntialiasMode, Direction, RenderFormat},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics,
-    RenderOutput, RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, RenderSurface,
+    Result, SegmentOptions, ShapingResult, TextRun,
 };
 
 use windows::Win32::Graphics::DirectWrite::{
@@ -888,7 +888,7 @@ impl Backend for DirectWriteBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
-        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
+        // Diagnostics removed for simplicity
         // Check if we have glyphs to render
         if shaped.glyphs.is_empty() {
             return Ok(RenderOutput::Bitmap(Bitmap {

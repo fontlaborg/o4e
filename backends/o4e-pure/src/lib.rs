@@ -2,35 +2,27 @@
 
 //! Pure Rust backend for o4e - suitable for WASM and no-std environments.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 extern crate alloc;
 
 use alloc::format;
 use alloc::string::String;
-use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::fmt;
 
 use o4e_core::{
     types::{Direction, RenderFormat},
-    Backend, Bitmap, Font, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics, RenderOutput,
-    RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, Glyph, RenderOptions, RenderOutput, RenderSurface, Result,
+    SegmentOptions, ShapingResult, TextRun,
 };
 
 /// Pure Rust backend using rustybuzz for shaping and tiny-skia for rendering
 pub struct PureRustBackend {
-    #[cfg(feature = "cache")]
-    cache: alloc::collections::BTreeMap<String, Arc<ShapingResult>>,
+    _placeholder: (),
 }
 
 impl PureRustBackend {
     pub fn new() -> Self {
-        Self {
-            #[cfg(feature = "cache")]
-            cache: alloc::collections::BTreeMap::new(),
-        }
+        Self { _placeholder: () }
     }
 
     /// Simple text segmentation - breaks on script changes
@@ -209,7 +201,7 @@ impl Backend for PureRustBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
-        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
+        // Diagnostics removed for simplicity
         match options.format {
             RenderFormat::Raw | RenderFormat::Png => {
                 let bitmap = self.render_glyphs(shaped, options)?;
@@ -239,10 +231,7 @@ impl Backend for PureRustBackend {
     }
 
     fn clear_cache(&self) {
-        #[cfg(feature = "cache")]
-        {
-            self.cache.clear();
-        }
+        // No cache to clear
     }
 }
 
@@ -254,6 +243,7 @@ impl Default for PureRustBackend {
 
 // Simple script detection
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 enum Script {
     Latin,
     Cyrillic,

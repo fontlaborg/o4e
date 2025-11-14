@@ -9,8 +9,8 @@ use o4e_core::{
     cache::{FontKey, GlyphKey, RenderedGlyph},
     types::{Direction, FontSource, RenderFormat},
     utils::{calculate_bbox, quantize_size},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics,
-    RenderOutput, RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, RenderSurface,
+    Result, SegmentOptions, ShapingResult, TextRun,
 };
 use o4e_fontdb::{script_fallbacks, FontDatabase, FontHandle};
 use o4e_render::outlines::glyph_bez_path as recorded_glyph_path;
@@ -39,6 +39,7 @@ pub struct HarfBuzzBackend {
 #[derive(Clone, Debug)]
 struct FontDataEntry {
     key: String,
+    #[allow(dead_code)]
     path: Option<PathBuf>,
     bytes: Arc<[u8]>,
     face_index: u32,
@@ -73,6 +74,7 @@ impl FontDataEntry {
 
 #[derive(Debug)]
 struct HbFontEntry {
+    #[allow(dead_code)]
     data: Arc<FontDataEntry>,
     font: Owned<HbFont<'static>>,
 }
@@ -253,6 +255,7 @@ impl HarfBuzzBackend {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_cached_glyph(
         &self,
         target: &mut Pixmap,
@@ -386,7 +389,7 @@ impl Backend for HarfBuzzBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
-        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
+        // Diagnostics removed for simplicity
         // Check if we have glyphs to render
         if shaped.glyphs.is_empty() {
             return Ok(RenderOutput::Bitmap(Bitmap {
@@ -417,12 +420,12 @@ impl Backend for HarfBuzzBackend {
 
         // Parse colors
         let (text_r, text_g, text_b, text_a) =
-            o4e_core::utils::parse_color(&options.color).map_err(|e| O4eError::render(e))?;
+            o4e_core::utils::parse_color(&options.color).map_err(O4eError::render)?;
 
         // Fill background if not transparent
         if options.background != "transparent" {
-            let (bg_r, bg_g, bg_b, bg_a) = o4e_core::utils::parse_color(&options.background)
-                .map_err(|e| O4eError::render(e))?;
+            let (bg_r, bg_g, bg_b, bg_a) =
+                o4e_core::utils::parse_color(&options.background).map_err(O4eError::render)?;
             pixmap.fill(Color::from_rgba8(bg_r, bg_g, bg_b, bg_a));
         }
 
@@ -480,7 +483,7 @@ impl Backend for HarfBuzzBackend {
         if options.format == RenderFormat::Svg {
             let svg_options = o4e_core::types::SvgOptions::default();
             let renderer = o4e_render::SvgRenderer::new(&svg_options);
-            let svg = renderer.render(&shaped, &svg_options);
+            let svg = renderer.render(shaped, &svg_options);
             return Ok(RenderOutput::Svg(svg));
         }
 

@@ -65,7 +65,6 @@ pub struct FontCache {
 
     /// Rendered glyph cache
     glyph_cache: DashMap<GlyphKey, Arc<RenderedGlyph>>,
-
 }
 
 impl FontCache {

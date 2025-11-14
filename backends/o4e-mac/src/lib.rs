@@ -33,8 +33,8 @@ use core_text::{
 use lru::LruCache;
 use o4e_core::{
     types::{AntialiasMode, FontSource, FontStyle, RenderFormat},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics,
-    RenderOutput, RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, RenderSurface,
+    Result, SegmentOptions, ShapingResult, TextRun,
 };
 use o4e_fontdb::FontDatabase;
 use o4e_unicode::TextSegmenter;
@@ -471,7 +471,7 @@ impl Backend for CoreTextBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
-        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
+        // Diagnostics removed for simplicity
         // Check if we have glyphs to render
         if shaped.glyphs.is_empty() {
             return Ok(RenderOutput::Bitmap(Bitmap {
@@ -516,12 +516,12 @@ impl Backend for CoreTextBackend {
         Self::configure_antialias(&context, options.antialias);
 
         let (text_r, text_g, text_b, text_a) =
-            o4e_core::utils::parse_color(&options.color).map_err(|e| O4eError::render(e))?;
+            o4e_core::utils::parse_color(&options.color).map_err(O4eError::render)?;
 
         // Fill background if not transparent
         if options.background != "transparent" {
-            let (bg_r, bg_g, bg_b, bg_a) = o4e_core::utils::parse_color(&options.background)
-                .map_err(|e| O4eError::render(e))?;
+            let (bg_r, bg_g, bg_b, bg_a) =
+                o4e_core::utils::parse_color(&options.background).map_err(O4eError::render)?;
             context.set_rgb_fill_color(
                 bg_r as f64 / 255.0,
                 bg_g as f64 / 255.0,
@@ -572,7 +572,7 @@ impl Backend for CoreTextBackend {
         if options.format == RenderFormat::Svg {
             let svg_options = o4e_core::types::SvgOptions::default();
             let renderer = o4e_render::SvgRenderer::new(&svg_options);
-            let svg = renderer.render(&shaped, &svg_options);
+            let svg = renderer.render(shaped, &svg_options);
             return Ok(RenderOutput::Svg(svg));
         }
 

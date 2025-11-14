@@ -221,7 +221,7 @@ impl BatchMetrics {
 
     fn snapshot(&self) -> LatencySnapshot {
         let histogram = self.histogram.lock();
-        if histogram.len() == 0 {
+        if histogram.is_empty() {
             return LatencySnapshot::default();
         }
         LatencySnapshot {

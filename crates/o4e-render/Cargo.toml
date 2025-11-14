@@ -6,6 +6,13 @@ authors.workspace = true
 license.workspace = true
 description = "Rendering utilities for o4e text engine"
 
+[features]
+default = ["variable-fonts"]
+variable-fonts = [
+    "ttf-parser/variable-fonts",
+    "owned_ttf_parser/variable-fonts",
+]
+
 [dependencies]
 o4e-core = { path = "../../backends/o4e-core" }
 o4e-fontdb = { path = "../o4e-fontdb" }
@@ -25,3 +32,6 @@ ttf-parser.workspace = true
 owned_ttf_parser.workspace = true
 shellexpand = "3"
 lyon_geom.workspace = true
+
+[dev-dependencies]
+insta = "1.39"

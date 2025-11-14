@@ -4,7 +4,6 @@
 
 use crate::outlines::glyph_bez_path as recorded_glyph_path;
 use kurbo::{BezPath, PathEl, Point};
-use log::debug;
 use o4e_core::{types::BoundingBox, Font, Glyph, ShapingResult, SvgOptions};
 use o4e_fontdb::FontDatabase;
 use owned_ttf_parser::{AsFaceRef, OwnedFace};
@@ -45,7 +44,7 @@ impl SvgRenderer {
         let mut svg = String::with_capacity(1024);
 
         // Calculate bounding box
-        let bbox = calculate_svg_bbox(&shaped.glyphs, shaped.bbox.clone());
+        let bbox = calculate_svg_bbox(&shaped.glyphs, shaped.bbox);
 
         // Write SVG header
         let _ = write!(
@@ -173,7 +172,7 @@ fn face_and_scale(font: &Font) -> Option<(Arc<OwnedFace>, f32)> {
         return None;
     }
 
-    let face = font_store().face_for(font).map_err(|err| err).ok()?;
+    let face = font_store().face_for(font).ok()?;
 
     let units = face.as_face_ref().units_per_em();
     if units == 0 {

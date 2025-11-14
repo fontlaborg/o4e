@@ -318,6 +318,12 @@ pub struct SvgOptions {
     pub simplify: bool,
     /// Decimal precision
     pub precision: usize,
+    /// Enable COLR/CPAL color font rendering
+    pub color_fonts: bool,
+    /// Palette index to use when rendering color fonts
+    pub palette_index: u16,
+    /// Optional color override used for COLR foreground references
+    pub foreground_color: Option<String>,
 }
 
 impl Default for SvgOptions {
@@ -326,6 +332,9 @@ impl Default for SvgOptions {
             include_paths: true,
             simplify: true,
             precision: 2,
+            color_fonts: true,
+            palette_index: 0,
+            foreground_color: None,
         }
     }
 }
