@@ -178,6 +178,7 @@ fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
                 height: 0.0,
             },
             font: None,
+            direction: o4e_core::types::Direction::LeftToRight,
         };
     }
 
@@ -211,6 +212,7 @@ fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
         advance: total_advance,
         bbox,
         font: None,
+        direction: o4e_core::types::Direction::LeftToRight,
     }
 }
 
@@ -267,6 +269,7 @@ mod tests {
                 glyphs,
                 bbox,
                 font: Some(font.clone()),
+                direction: run.direction,
             })
         }
 
@@ -316,6 +319,7 @@ mod tests {
                 height: 20.0,
             },
             font: None,
+            direction: o4e_core::types::Direction::LeftToRight,
         };
 
         let combined = combine_shaped_results(vec![result.clone()]);

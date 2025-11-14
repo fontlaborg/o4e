@@ -1,5 +1,8 @@
 # this_file: reference/haforu/Cargo.toml
 
+[workspace]
+members = []
+
 [package]
 name = "haforu"
 version = "2.0.0"

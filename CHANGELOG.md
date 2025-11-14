@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Shared outline extraction between the ICU+HarfBuzz rasterizer and SVG renderer via the new `o4e-render::outlines` module, so both pipelines consume identical glyph path data.
+- Script-aware font fallback in the ICU+HarfBuzz backend, driven by prioritized Noto chains plus JSON fixtures for Arabic and Devanagari shaping regression tests.
+- ICU+HarfBuzz backend now retains font bytes via shared `Arc<[u8]>`, caches rasterized glyph alpha masks through `FontCache`, and includes regression tests to ensure cached glyphs are reused rather than rebuilt.
+- DirectWrite backend now uses `IDWriteTextAnalyzer1` for segmentation/shaping, renders via `DrawGlyphRun`, and ships with Windows-only regression tests that cover mixed-script segmentation and glyph extraction.
+- DirectWrite backend honors `RenderOptions.antialias` ClearType vs grayscale toggles, maps `Font.features` and variable font axes into DirectWrite via `IDWriteFontFace5`, and adds bitmap-hash regression tests for antialias, ligature, and variation scenarios.
+- `build.sh` and `run.sh` helper scripts: the former runs formatting, workspace clippy/test/build (skipping the PyO3 crate), creates the Python wheel via `uvx maturin`, and builds `reference/haforu`, while the latter feeds JSONL jobs from `testdata/fonts` through the haforu CLI and smoke-tests the freshly built Python wheel.
 - SVG renderer now extracts real glyph outlines via `ttf-parser`/`kurbo`, simplifying them based on `SvgOptions.precision` and covering the flow with fixture-backed tests.
 - Regression tests for the CoreText backend covering Latin, Arabic (RTL), and CJK segmentation to lock in script metadata expectations.
 - CoreText rendering regression tests that draw Latin (Helvetica), Arabic (Geeza Pro), and CJK (PingFang SC) samples to ensure macOS output reflects the requested strings.
@@ -21,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Targeted unit tests covering mixed-script strings, bidi text, newline handling, and font fallback word boundaries.
 - Shared `o4e-unicode::TextSegmenter` crate so all backends can reuse the ICU/bidi segmentation logic with its own regression tests.
 - Complex script regression tests for Arabic (Noto Naskh) and Devanagari (Noto Sans Devanagari), including SIL OFL fixture fonts under `testdata/fonts/`, to lock in ICU+HarfBuzz contextual shaping.
+- `FontCache` now exposes `is_empty()` diagnostics and regression tests exercise `clear_cache()` for the HarfBuzz, CoreText (macOS), and DirectWrite (Windows) backends to ensure all cached layers drain correctly.
 
 ### Added
 - PyO3 bindings now expose `Glyph`/`ShapingResult` classes and fully implement the `render`, `shape`, and `render_batch` methods so the Python API can exercise the Rust backend.
@@ -28,11 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - macOS CoreText backend snapshot + glyph regression tests (Latin + Arabic) plus the stored PNG artifact under `testdata/expected/coretext/`.
 
 ### Changed
+- `ShapingResult` now carries a `direction` flag so caches/renderers preserve bidi context and DirectWrite can rebuild accurate glyph runs.
 - `ShapingResult` now stores the original run text (propagated through batch utilities and PyO3 bindings) so renderers can faithfully replay shaped strings.
 - CoreText rendering consumes the shaped string instead of a hard-coded placeholder, guaranteeing that exported bitmaps/PNGs carry the requested text.
 - CoreText backend now uses descriptor-driven `CTFont` creation (weight/style/variations), resolves per-run fallback fonts, and renders cached `CTRun` glyph streams via `CTFontDrawGlyphs` with precise advances/bounding boxes.
+- `reference/haforu` now declares an empty workspace so it can be built with standalone `cargo` invocations (e.g., from the new scripts).
 
 ### Fixed
+- ICU+HarfBuzz backend now keeps font data alive through shared handles instead of leaking `Box::leak` buffers, so repeat renders reuse the same font memory.
+- `combine_shaped_results` now preserves the shaped font when present so HarfBuzz rendering from Python succeeds instead of erroring with “Font information missing”.
+- `crates/o4e-render` SVG tests resolve bundled fonts relative to `CARGO_MANIFEST_DIR` and use `OwnedFace::as_face_ref().glyph_index`, restoring compatibility with `owned_ttf_parser` 0.24.
 - `pyproject.toml` now points maturin to `python/Cargo.toml`, enables the HarfBuzz feature set, and configures `pytest`/`hatch` so editable installs succeed.
 - `crates/o4e-render` declares its `parking_lot` dependency and satisfies ownership rules in the buffer pool utilities.
 - `o4e-python` compiles on PyO3 0.22 by switching to the new bound API; `cargo test` and the Python suite both pass on macOS.

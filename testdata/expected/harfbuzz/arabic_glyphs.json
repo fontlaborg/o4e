@@ -1,0 +1,6 @@
+{
+  "_this_file": "testdata/expected/harfbuzz/arabic_glyphs.json",
+  "text": "مرحبا بالعالم",
+  "glyph_ids": [486, 452, 4, 309, 452, 4, 38, 1374, 4, 37, 140, 212, 488],
+  "font": "NotoNaskhArabic-Regular.ttf"
+}

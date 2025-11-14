@@ -6,14 +6,14 @@ this_file: TODO.md
 - [x] [CoreText] Build `CTFontDescriptor` instances with weight/style/variation axes, cache them by `(family,size,variations)`, and feed the descriptor into `CTFontCreateCopyWithAttributes`.
 - [x] [CoreText] Implement run-level font fallback by resolving missing glyphs via CoreText font descriptors and annotating `TextRun.font` before shaping.
 - [x] [CoreText] Render shaped glyphs with `CTFontDrawGlyphs`, mapping `RenderOptions` antialias/background settings to CoreGraphics and adding PNG snapshot tests for Latin + Arabic strings.
-- [ ] [DirectWrite] Use `IDWriteTextAnalyzer1` (`AnalyzeScript`, `AnalyzeBidi`, `AnalyzeLineBreakpoints`) to generate accurate `TextRun`s with script/direction metadata.
-- [ ] [DirectWrite] Collect glyph data from `IDWriteGlyphRun` callbacks, store true glyph IDs/advances/clusters, and remove the placeholder text drawing path.
-- [ ] [DirectWrite] Support ClearType and grayscale output toggles plus OpenType feature/variation mapping via `IDWriteFontFace5`, with integration tests that hash the resulting pixel buffers.
-- [ ] [ICU+HB] Retain font bytes in `Arc<Vec<u8>>` (stop leaking), wrap them inside `Owned<HbFont<'static>>`, and hook `FontCache` glyph caching for reuse.
-- [ ] [ICU+HB] Share outline extraction logic (ttf-parser → reusable path builder) so both tiny-skia rasterization and the SVG renderer consume the same path data.
-- [ ] [ICU+HB] Implement script-aware font fallback (e.g., prioritized Noto list) and add shaping regression fixtures that compare glyph ID sequences to HarfBuzz reference JSON.
+- [x] [DirectWrite] Use `IDWriteTextAnalyzer1` (`AnalyzeScript`, `AnalyzeBidi`, `AnalyzeLineBreakpoints`) to generate accurate `TextRun`s with script/direction metadata.
+- [x] [DirectWrite] Collect glyph data from `IDWriteGlyphRun` callbacks, store true glyph IDs/advances/clusters, and remove the placeholder text drawing path.
+- [x] [DirectWrite] Support ClearType and grayscale output toggles plus OpenType feature/variation mapping via `IDWriteFontFace5`, with integration tests that hash the resulting pixel buffers.
+- [x] [ICU+HB] Retain font bytes in `Arc<Vec<u8>>` (stop leaking), wrap them inside `Owned<HbFont<'static>>`, and hook `FontCache` glyph caching for reuse.
+- [x] [ICU+HB] Share outline extraction logic (ttf-parser → reusable path builder) so both tiny-skia rasterization and the SVG renderer consume the same path data.
+- [x] [ICU+HB] Implement script-aware font fallback (e.g., prioritized Noto list) and add shaping regression fixtures that compare glyph ID sequences to HarfBuzz reference JSON.
 - [ ] [Shared] Introduce a common font discovery/fallback crate, extend `Font` with a `FontSource` enum (family/path/bytes), and update every backend plus Python bindings to respect it.
-- [ ] [Shared] Add cache diagnostics + tests ensuring each backend's `clear_cache()` truly empties mmap/face/shape/glyph caches.
+- [x] [Shared] Add cache diagnostics + tests ensuring each backend's `clear_cache()` truly empties mmap/face/shape/glyph caches.
 - [x] [Rendering] Implement `extract_glyph_path` in `crates/o4e-render::svg` using `ttf-parser` + `kurbo`, then add path simplification driven by `SvgOptions.precision`.
 - [ ] [Rendering] Support COLRv1/CPAL color fonts in SVG output and create `insta` snapshot tests for Latin, CJK, and emoji cases.
 - [ ] [Rendering] Introduce a `RenderSurface` abstraction to normalize BGRA↔RGBA conversion and alpha premultiplication across CoreText/DirectWrite/ICU+HB.

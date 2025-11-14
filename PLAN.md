@@ -30,23 +30,23 @@ Deliver a verifiable tri-backend MVP—CoreText (macOS), DirectWrite (Windows), 
 5. [x] Tests: unit test glyph extraction for Latin/Arabic strings via `#[cfg(target_os="macos")]`; integration test ensures advance width equals CTLine typographic bounds; add PNG snapshot smoke test saved under `testdata/expected/coretext/`.
 
 ### 1.2 DirectWrite backend (`backends/o4e-win`)
-1. Segmentation + analysis: wire `IDWriteTextAnalyzer1::AnalyzeScript`, `AnalyzeBidi`, and `AnalyzeLineBreakpoints` to emit `TextRun`s with correct script/direction/line info.
-2. Glyph shaping: obtain `IDWriteGlyphRun` data through `GetGlyphRun` callbacks, populate real glyph IDs/advances, capture clusters, and store baseline metrics in `ShapingResult`.
-3. Rendering fidelity: replace placeholder "Hello World" drawing with `DrawGlyphRun` using the shaped data; expose ClearType and grayscale via `RenderOptions.antialias`.
-4. Feature toggles: extend `Font` -> `DWRITE_FONT_FEATURE` mapping (liga/kern/smcp) and variable font axes using `IDWriteFontFace5` when available.
+1. [x] Segmentation + analysis: wire `IDWriteTextAnalyzer1::AnalyzeScript`, `AnalyzeBidi`, and `AnalyzeLineBreakpoints` to emit `TextRun`s with correct script/direction/line info.
+2. [x] Glyph shaping: obtain `IDWriteGlyphRun` data through `GetGlyphRun` callbacks, populate real glyph IDs/advances, capture clusters, and store baseline metrics in `ShapingResult`.
+3. [x] Rendering fidelity: replace placeholder "Hello World" drawing with `DrawGlyphRun` using the shaped data; expose ClearType and grayscale via `RenderOptions.antialias`.
+4. [x] Feature toggles: extend `Font` -> `DWRITE_FONT_FEATURE` mapping (liga/kern/smcp) and variable font axes using `IDWriteFontFace5` when available.
 5. Tests: add Rust integration test guarded by `#[cfg(target_os="windows")]` using known system font (e.g., `Segoe UI`) plus mock fonts from `testdata/fonts`; verify bidi segmentation and ClearType toggle produce different alpha coverage by hashing pixel buffer.
 
 ### 1.3 ICU+HarfBuzz backend (`backends/o4e-icu-hb`)
-1. Fix font lifetime handling: stop leaking font bytes by keeping `Arc<Vec<u8>>` in cache and using `Owned<FONT>` with `'static` by storing the `Arc` inside the struct.
-2. Implement glyph cache reuse: hook `FontCache::get_glyph`/`cache_glyph` so repeated renders reuse bitmaps; respect quantized size.
-3. Outline extraction: connect `ttf-parser` outlines into shared path builder that both raster (tiny-skia) and SVG renderer can reuse; expose `extract_glyph_path` helper returning `kurbo::BezPath` instructions.
-4. Font fallback + script-specific shaping: when `TextSegmenter` splits different scripts, locate fallback font per script (Noto fallback list) and attach to run before calling HarfBuzz.
-5. Tests: extend existing segmentation tests to ensure fallback fonts resolve; add shaping regression tests for Arabic/Devanagari strings comparing glyph ID sequences against HarfBuzz reference output stored in JSON fixtures.
+1. [x] Fix font lifetime handling: stop leaking font bytes by keeping `Arc<Vec<u8>>` in cache and using `Owned<FONT>` with `'static` by storing the `Arc` inside the struct.
+2. [x] Implement glyph cache reuse: hook `FontCache::get_glyph`/`cache_glyph` so repeated renders reuse bitmaps; respect quantized size.
+3. [x] Outline extraction: connect `ttf-parser` outlines into shared path builder that both raster (tiny-skia) and SVG renderer can reuse; expose `extract_glyph_path` helper returning `kurbo::BezPath` instructions.
+4. [x] Font fallback + script-specific shaping: when `TextSegmenter` splits different scripts, locate fallback font per script (Noto fallback list) and attach to run before calling HarfBuzz.
+5. [x] Tests: extend existing segmentation tests to ensure fallback fonts resolve; add shaping regression tests for Arabic/Devanagari strings comparing glyph ID sequences against HarfBuzz reference output stored in JSON fixtures.
 
 ### 1.4 Shared backend services
 1. Move system font discovery + fallback lists into a new crate `crates/o4e-fontdb` (or reuse `font-kit` if adequate) to avoid duplicating search logic across backends.
 2. Expand `Font` struct to capture `source: FontSource` (family vs path vs bytes) and update all backends to handle each variant.
-3. Implement `Backend::clear_cache` tests ensuring caches actually shrink (hit counters reset) to prevent leaks.
+3. [x] Implement `Backend::clear_cache` tests ensuring caches actually shrink (hit counters reset) to prevent leaks (added `FontCache::is_empty` diagnostics plus HarfBuzz/CoreText/DirectWrite fixtures).
 4. Provide `RenderOptionsDiagnostics` struct (crate-local) logging actual backend + feature set for easier debugging; integrate with `log` macros only when `RUST_LOG` enabled.
 
 ## Phase 2 – Rendering & Outputs

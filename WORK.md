@@ -20,6 +20,79 @@ this_file: WORK.md
 - `cargo test` → ✅ (warnings unchanged: existing cfg/unused-field notices plus deprecated `ttf_parser::Face::from_slice` in `o4e-icu-hb`).
 - `uvx hatch test` → ⚠️ no tests collected (baseline repo state).
 
+## 2025-11-14 – Build/run automation scripts
+
+### Notes
+- Added `build.sh` to sequence formatting, linting, testing, workspace release builds, Python wheel creation, and reference haforu builds in one canonical release command (skipping the PyO3 crate where `cargo` linkage fails and tolerating the current `pytest` exit-5/no-tests situation).
+- Added `run.sh` to exercise `reference/haforu` streaming mode with JSONL jobs derived from the bundled SIL Noto fixtures and to spin up a disposable `uv` virtualenv that installs the freshly built wheel and renders a PNG via the Python bindings.
+- Declared an empty `[workspace]` in `reference/haforu/Cargo.toml` so `cargo` treats it as a standalone project when invoked from scripts.
+- Fixed `crates/o4e-render` SVG tests by resolving bundled fonts relative to `CARGO_MANIFEST_DIR` and by using `OwnedFace::as_face_ref().glyph_index`, ensuring the tests compile with `owned_ttf_parser 0.24`.
+- Updated `combine_shaped_results` to preserve the first available font so HarfBuzz rendering can succeed after shaping, unblocking the Python demo.
+
+### Test log
+- `./build.sh` → runs `cargo fmt`, `cargo clippy --workspace --all-features --exclude o4e-python`, `cargo test --workspace --all-features --exclude o4e-python`, `cargo build --workspace --release --exclude o4e-python`, `uvx hatch test` (exit 5 logged as “no tests”), `uvx maturin build --release --locked --out target/wheels`, and `cargo build --manifest-path reference/haforu/Cargo.toml --release`.
+- `./run.sh` → streams three jobs through `reference/haforu` (PNG artifacts under `run_artifacts/haforu_*.png`), and provisions an ephemeral `uv venv` to install the wheel and render `python_demo.png` via `TextRenderer`.
+
+## 2025-11-15 – DirectWrite segmentation/shaping refresh
+
+### Notes
+- Implemented a COM-backed `TextAnalysisBridge` so the DirectWrite backend now feeds real `IDWriteTextAnalyzer` callbacks for script, bidi, and line-break metadata instead of returning synthetic runs.
+- Replaced the stub segmentation + shaping logic with analyzer-driven runs, true `GetGlyphs`/`GetGlyphPlacements` output, and expanded shape-cache keys that include direction, features, and variations.
+- Reworked rendering to build `DWRITE_GLYPH_RUN`s from the captured glyph data, map `RenderOptions.antialias` to Direct2D/ClearType toggles, and draw text via `DrawGlyphRun` (no more placeholder strings).
+- Added Windows-only regression tests covering segmentation (mixed scripts) and shaping to lock in the analyzer pipeline.
+
+### Test log
+- `cargo test` → ✅
+- `uvx hatch test` → ⚠️ exits 5 because pytest still has zero collected tests
+
+## 2025-11-15 – DirectWrite antialias + feature toggles
+
+### Notes
+- Extended the DirectWrite font-face cache key to include weight/style/variations and clone variable fonts via `IDWriteFontFace5` + `IDWriteFontResource::CreateFontFace`, so `Font.variations` drives axis values instead of always using defaults.
+- Added `FeatureBindings` to translate `Font.features` into `DWRITE_FONT_FEATURE` arrays for `GetGlyphs` and introduced custom `IDWriteRenderingParams` wiring so `RenderOptions.antialias` actually switches between ClearType, grayscale, and aliased output.
+- Created bitmap-hash regression tests that compare grayscale vs ClearType buffers, ligature enabled vs disabled rendering, and light vs heavy Bahnschrift variation renders.
+
+### Test log
+- `cargo test` → ✅ (workspace green; only existing dead-code warnings remain)
+- `uvx hatch test` → ⚠️ exits 5 because pytest still has zero collected tests
+
+## 2025-11-16 – HarfBuzz font retention and glyph caching
+
+### Notes
+- Reworked the ICU+HarfBuzz backend to resolve actual font paths, load them once into `Arc<[u8]>`, and build both HarfBuzz faces and `ttf_parser` faces from that shared memory instead of leaking `Box::leak` buffers.
+- Introduced reusable font/face handles plus a glyph rasterization helper that stores per-size alpha masks in the shared `FontCache`, then renders future glyphs by tinting those masks rather than rebuilding outlines.
+- Added regression tests that render with the HarfBuzz backend, assert glyph cache population, and verify that re-rendering identical text does not grow the cache.
+
+### Test log
+- `cargo test` → ✅ (workspace green; existing warnings about unused cache fields remain)
+- `uvx hatch test` → ⚠️ exits 5 (pytest still has no collected tests)
+
+## 2025-11-17 – ICU+HB outline reuse + fallback fixtures
+
+### Notes
+- Added `crates/o4e-render/src/outlines.rs` so glyph outlines are recorded once via `ttf-parser` and reused by both the SVG renderer and the ICU+HarfBuzz rasterizer. Updated `SvgRenderer` to build `<path>` data from shared commands and removed the duplicated Core Graphics builder logic.
+- Reworked the ICU+HarfBuzz backend to reuse the shared outline recorder for rasterization, added env-driven font search directories, and introduced script-aware fallback chains (Noto-first) that only switch fonts when the requested face lacks coverage. Propagated the resolved font through shaping -> rendering so caches work per actual face.
+- Created JSON fixtures under `testdata/expected/harfbuzz/` for Arabic and Devanagari strings, then extended the backend tests to load those fixtures, assert glyph sequences, and verify fallback runs resolve to the expected Noto fonts. Added helpers to seed fixture fonts via `O4E_FONT_DIRS`.
+- Updated PLAN, TODO, and CHANGELOG checkboxes plus documented the test status here per repo guidelines.
+
+### Test log
+- `cargo test` → ✅ (workspace green; existing warnings about cache stats remain unchanged).
+- `uvx hatch test` → ⚠️ exits 5 (“no tests ran”), matching the known empty Python suite baseline.
+
+## 2025-11-17 – Cache diagnostics + backend clearing tests
+
+### Notes
+- Replaced the ICU+HarfBuzz tiny-skia outline recorder with the shared `o4e-render::outlines` path builder, added a direct `kurbo` dependency, and ensured glyphs without outlines still create cached placeholders so glyph-cache statistics stay accurate.
+- Hardened the fallback tests by shaping merged runs against the JSON fixtures, which guarantees we compare the full glyph stream and confirm the resolved fonts report the expected Noto families.
+- Added `FontCache::is_empty()` plus a cache-clearing regression test in `o4e-core`, and wired new `clear_cache` tests for the HarfBuzz, CoreText (macOS), and DirectWrite (Windows-only) backends so every cache layer is verified.
+
+### Test log
+- `uvx hatch test` → ⚠️ exit 5 (pytest still collects zero tests).
+- `cargo test -p o4e-core` → ✅ exercised the cache clearing diagnostics.
+- `cargo test -p o4e-icu-hb` → ✅ cross-platform backend now green with shared outlines + fallback fixes.
+- `cargo test -p o4e-mac` → ✅ confirms CoreText cache clearing & snapshot assertions on macOS.
+- `cargo test -p o4e-render` → ✅ SVG + outline refactor intact.
+
 ## 2024-11-14 – Sprint Continuation (Scratchpad)
 
 ### Baseline verification

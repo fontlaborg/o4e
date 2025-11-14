@@ -2,6 +2,7 @@
 
 //! SVG rendering implementation for o4e.
 
+use crate::outlines::glyph_bez_path as recorded_glyph_path;
 use kurbo::{BezPath, PathEl, Point};
 use log::debug;
 use o4e_core::{types::BoundingBox, Font, Glyph, ShapingResult, SvgOptions};
@@ -15,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use thiserror::Error;
-use ttf_parser::{FaceParsingError, GlyphId, OutlineBuilder};
+use ttf_parser::{FaceParsingError, GlyphId};
 
 /// SVG renderer for converting shaped text to SVG format.
 pub struct SvgRenderer {
@@ -118,7 +119,7 @@ impl SvgRenderer {
     }
 
     fn glyph_path_data(&self, glyph: &Glyph, font: Option<&Font>) -> Option<String> {
-        let outline = glyph_outline(font, glyph)?;
+        let outline = svg_outline(font, glyph)?;
         let processed = if self.simplify {
             simplify_path(outline, self.precision)
         } else {
@@ -162,16 +163,11 @@ fn calculate_svg_bbox(glyphs: &[Glyph], fallback: BoundingBox) -> BoundingBox {
     }
 }
 
-fn glyph_outline(font: Option<&Font>, glyph: &Glyph) -> Option<BezPath> {
+fn svg_outline(font: Option<&Font>, glyph: &Glyph) -> Option<BezPath> {
     let font = font?;
     let glyph_id = GlyphId(u16::try_from(glyph.id).ok()?);
     let (face, scale) = face_and_scale(font)?;
-    let mut builder = SvgOutlineBuilder::new(scale);
-
-    face.as_face_ref().outline_glyph(glyph_id, &mut builder)?;
-
-    let path = builder.finish();
-    (!path.elements().is_empty()).then_some(path)
+    recorded_glyph_path(face.as_face_ref(), glyph_id, scale)
 }
 
 fn face_and_scale(font: &Font) -> Option<(Arc<OwnedFace>, f32)> {
@@ -400,58 +396,10 @@ fn font_directories() -> Vec<PathBuf> {
         .collect()
 }
 
-struct SvgOutlineBuilder {
-    path: BezPath,
-    scale: f64,
-}
-
-impl SvgOutlineBuilder {
-    fn new(scale: f32) -> Self {
-        Self {
-            path: BezPath::new(),
-            scale: scale as f64,
-        }
-    }
-
-    fn finish(self) -> BezPath {
-        self.path
-    }
-
-    fn map_point(&self, x: f32, y: f32) -> Point {
-        Point::new((x as f64) * self.scale, (-y as f64) * self.scale)
-    }
-}
-
-impl OutlineBuilder for SvgOutlineBuilder {
-    fn move_to(&mut self, x: f32, y: f32) {
-        self.path.move_to(self.map_point(x, y));
-    }
-
-    fn line_to(&mut self, x: f32, y: f32) {
-        self.path.line_to(self.map_point(x, y));
-    }
-
-    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        let control = self.map_point(x1, y1);
-        let end = self.map_point(x, y);
-        self.path.quad_to(control, end);
-    }
-
-    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        let c1 = self.map_point(x1, y1);
-        let c2 = self.map_point(x2, y2);
-        let end = self.map_point(x, y);
-        self.path.curve_to(c1, c2, end);
-    }
-
-    fn close(&mut self) {
-        self.path.close_path();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use o4e_core::types::Direction;
     use std::fs;
     use std::path::PathBuf;
 
@@ -482,6 +430,7 @@ mod tests {
                 height: 2.0,
             },
             font: None,
+            direction: Direction::LeftToRight,
         }
     }
 
@@ -506,6 +455,7 @@ mod tests {
                 height: 20.0,
             },
             font: None,
+            direction: Direction::LeftToRight,
         };
 
         let svg = renderer.render(&shaped, &SvgOptions::default());
@@ -586,6 +536,7 @@ mod tests {
                 height: 48.0,
             },
             font: Some(font),
+            direction: Direction::LeftToRight,
         };
 
         let svg = renderer.render(&shaped, &SvgOptions::default());
@@ -596,7 +547,8 @@ mod tests {
     }
 
     fn noto_sans_font(size: f32) -> (Font, PathBuf) {
-        let path = PathBuf::from("testdata/fonts/NotoSans-Regular.ttf");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/fonts/NotoSans-Regular.ttf");
         let mut font = Font::new(path.to_string_lossy(), size);
         font.family = path.to_string_lossy().into_owned();
         (font, path)
@@ -605,6 +557,9 @@ mod tests {
     fn glyph_id_for(ch: char, font_path: &PathBuf) -> u32 {
         let data = fs::read(font_path).expect("Test font readable");
         let face = OwnedFace::from_vec(data, 0).expect("Font parsed");
-        face.glyph_index(ch as u32).expect("Glyph must exist").0 as u32
+        face.as_face_ref()
+            .glyph_index(ch)
+            .expect("Glyph must exist")
+            .0 as u32
     }
 }

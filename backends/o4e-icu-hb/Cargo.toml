@@ -10,6 +10,7 @@ description = "ICU+HarfBuzz backend for o4e text rendering"
 o4e-core = { path = "../o4e-core" }
 o4e-render = { path = "../../crates/o4e-render" }
 o4e-unicode = { path = "../../crates/o4e-unicode" }
+o4e-fontdb = { path = "../../crates/o4e-fontdb" }
 thiserror.workspace = true
 anyhow.workspace = true
 log.workspace = true
@@ -22,7 +23,6 @@ harfbuzz_rs = "2.0"
 # Font handling
 ttf-parser = "0.24"
 owned_ttf_parser = "0.24"
-shellexpand = "3.1"
 
 # Rendering
 tiny-skia = "0.11"
@@ -33,3 +33,5 @@ kurbo = "0.11"
 
 [dev-dependencies]
 env_logger = "0.11"
+serde.workspace = true
+serde_json.workspace = true

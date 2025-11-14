@@ -422,6 +422,7 @@ impl Backend for CoreTextBackend {
             advance,
             bbox,
             font: Some(resolved_font.clone()),
+            direction: run.direction,
         };
         let result = Arc::new(result);
 
@@ -875,5 +876,32 @@ mod tests {
     #[test]
     fn test_coretext_render_when_cjk_text_provided() {
         assert_script_rendered("你好世界", "PingFang SC");
+    }
+
+    #[test]
+    fn test_clear_cache_drops_ctfont_entries() {
+        let backend = CoreTextBackend::new();
+        let font = Font::new("Helvetica", 32.0);
+        if backend.get_or_create_ct_font(&font).is_err() {
+            eprintln!("Skipping clear_cache test; Helvetica not available");
+            return;
+        }
+
+        let runs = backend
+            .segment("Cache warmup", &SegmentOptions::default())
+            .unwrap();
+        let shaped = backend.shape(&runs[0], &font).unwrap();
+        backend.render(&shaped, &RenderOptions::default()).unwrap();
+
+        assert!(
+            backend.ct_font_cache.read().len() > 0,
+            "ct_font_cache should populate after a render"
+        );
+        backend.clear_cache();
+        assert_eq!(
+            backend.ct_font_cache.read().len(),
+            0,
+            "ct_font_cache should be empty after clear_cache"
+        );
     }
 }

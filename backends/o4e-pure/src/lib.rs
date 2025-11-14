@@ -204,6 +204,7 @@ impl Backend for PureRustBackend {
             advance: x_offset,
             bbox,
             font: Some(font.clone()),
+            direction: run.direction,
         })
     }
 

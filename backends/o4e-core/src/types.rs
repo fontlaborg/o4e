@@ -3,12 +3,52 @@
 //! Core types used throughout the o4e rendering engine.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+
+/// Font source describing how the font should be resolved.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FontSource {
+    /// Use a system font family name.
+    Family(String),
+    /// Load a font from an explicit file path.
+    Path(String),
+    /// Load a font from raw bytes supplied by the caller.
+    Bytes {
+        /// Friendly name for diagnostics.
+        name: String,
+        /// Font data (owned, shared across clones).
+        data: Arc<[u8]>,
+    },
+}
+
+impl FontSource {
+    /// Human-readable label for this source (used for logging/errors).
+    pub fn label(&self) -> &str {
+        match self {
+            FontSource::Family(name) => name.as_str(),
+            FontSource::Path(path) => path.as_str(),
+            FontSource::Bytes { name, .. } => name.as_str(),
+        }
+    }
+
+    /// Returns the family fallback string if available.
+    pub fn family_name(&self) -> String {
+        match self {
+            FontSource::Family(name) => name.clone(),
+            FontSource::Path(path) => PathBuf::from(path)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|stem| stem.to_string())
+                .unwrap_or_else(|| path.clone()),
+            FontSource::Bytes { name, .. } => name.clone(),
+        }
+    }
+}
 
 /// Font specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Font {
-    /// Font family name or path to font file
+    /// Font family name (display / fallback only)
     pub family: String,
     /// Font size in pixels
     pub size: f32,
@@ -20,18 +60,60 @@ pub struct Font {
     pub variations: HashMap<String, f32>,
     /// OpenType features
     pub features: Features,
+    /// Source describing how the font should be loaded.
+    pub source: FontSource,
 }
 
 impl Font {
     pub fn new(family: impl Into<String>, size: f32) -> Self {
+        let family = family.into();
         Self {
-            family: family.into(),
+            family: family.clone(),
             size,
             weight: 400,
             style: FontStyle::Normal,
             variations: HashMap::new(),
             features: Features::default(),
+            source: FontSource::Family(family),
         }
+    }
+
+    /// Create a font from a file path.
+    pub fn from_path(path: impl Into<String>, size: f32) -> Self {
+        let path = path.into();
+        Self {
+            family: FontSource::Path(path.clone()).family_name(),
+            size,
+            weight: 400,
+            style: FontStyle::Normal,
+            variations: HashMap::new(),
+            features: Features::default(),
+            source: FontSource::Path(path),
+        }
+    }
+
+    /// Create a font from raw bytes.
+    pub fn from_bytes(name: impl Into<String>, data: Vec<u8>, size: f32) -> Self {
+        let name = name.into();
+        Self {
+            family: name.clone(),
+            size,
+            weight: 400,
+            style: FontStyle::Normal,
+            variations: HashMap::new(),
+            features: Features::default(),
+            source: FontSource::Bytes {
+                name,
+                data: Arc::from(data.into_boxed_slice()),
+            },
+        }
+    }
+
+    /// Replace the source while keeping styling attributes.
+    pub fn with_source(mut self, source: FontSource) -> Self {
+        self.family = source.family_name();
+        self.source = source;
+        self
     }
 }
 
@@ -81,6 +163,8 @@ pub struct ShapingResult {
     pub bbox: BoundingBox,
     /// Font used for shaping (optional, for rendering)
     pub font: Option<Font>,
+    /// Direction resolved during shaping
+    pub direction: Direction,
 }
 
 /// Individual glyph information

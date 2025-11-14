@@ -3,65 +3,118 @@
 //! ICU+HarfBuzz backend for cross-platform text rendering.
 
 use harfbuzz_rs::{Face as HbFace, Font as HbFont, Language, Owned, Tag, UnicodeBuffer};
+use kurbo::{BezPath, PathEl};
 use lru::LruCache;
 use o4e_core::{
-    types::Direction, Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions,
-    RenderOutput, Result, SegmentOptions, ShapingResult, TextRun,
+    cache::{FontKey, GlyphKey, RenderedGlyph},
+    types::{Direction, FontSource},
+    utils::{calculate_bbox, quantize_size},
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
+    SegmentOptions, ShapingResult, TextRun,
 };
+use o4e_render::outlines::glyph_bez_path as recorded_glyph_path;
 use o4e_unicode::TextSegmenter;
+use o4e_fontdb::{script_fallbacks, FontDatabase, FontHandle};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Transform};
-use ttf_parser::{Face as TtfFace, OutlineBuilder};
+use tiny_skia::{
+    Color, FillRule, Paint, Path as SkiaPath, PathBuilder, Pixmap, PixmapPaint, PixmapRef,
+    Transform,
+};
+use ttf_parser::{Face as TtfFace, GlyphId};
 
 pub struct HarfBuzzBackend {
     cache: FontCache,
-    hb_cache: RwLock<LruCache<String, Arc<Owned<HbFont<'static>>>>>,
-    face_cache: RwLock<HashMap<String, Arc<Vec<u8>>>>,
-    ttf_cache: RwLock<HashMap<String, Arc<TtfFace<'static>>>>,
+    hb_cache: RwLock<LruCache<String, Arc<HbFontEntry>>>,
+    ttf_cache: RwLock<HashMap<String, Arc<TtfFaceEntry>>>,
+    font_data_cache: RwLock<HashMap<String, Arc<FontDataEntry>>>,
+    font_db: &'static FontDatabase,
     segmenter: TextSegmenter,
 }
 
-/// Outline builder for converting TrueType outlines to tiny-skia paths
-struct SkiaOutlineBuilder {
-    builder: PathBuilder,
-    scale: f32,
+#[derive(Clone, Debug)]
+struct FontDataEntry {
+    key: String,
+    path: Option<PathBuf>,
+    bytes: Arc<[u8]>,
+    face_index: u32,
 }
 
-impl OutlineBuilder for SkiaOutlineBuilder {
-    fn move_to(&mut self, x: f32, y: f32) {
-        self.builder.move_to(x * self.scale, -y * self.scale);
+impl FontDataEntry {
+    fn from_handle(handle: Arc<FontHandle>) -> Self {
+        Self {
+            key: handle.key.clone(),
+            path: handle.path.clone(),
+            bytes: handle.bytes.clone(),
+            face_index: handle.face_index,
+        }
     }
 
-    fn line_to(&mut self, x: f32, y: f32) {
-        self.builder.line_to(x * self.scale, -y * self.scale);
+    fn as_static_slice(&self) -> &'static [u8] {
+        // Safety: the underlying Arc<[u8]> remains alive as long as this entry does.
+        unsafe { std::mem::transmute::<&[u8], &'static [u8]>(self.bytes.as_ref()) }
     }
 
-    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        self.builder.quad_to(
-            x1 * self.scale,
-            -y1 * self.scale,
-            x * self.scale,
-            -y * self.scale,
-        );
+    fn key(&self) -> String {
+        self.key.clone()
     }
 
-    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        self.builder.cubic_to(
-            x1 * self.scale,
-            -y1 * self.scale,
-            x2 * self.scale,
-            -y2 * self.scale,
-            x * self.scale,
-            -y * self.scale,
-        );
+    fn font_key(&self) -> FontKey {
+        FontKey {
+            path: PathBuf::from(&self.key),
+            face_index: self.face_index,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct HbFontEntry {
+    data: Arc<FontDataEntry>,
+    font: Owned<HbFont<'static>>,
+}
+
+impl HbFontEntry {
+    fn new(data: Arc<FontDataEntry>, size: f32) -> Result<Self> {
+        let hb_face = HbFace::new(data.bytes.clone(), data.face_index);
+        let mut hb_font = HbFont::new(hb_face);
+
+        let scale = (size * 64.0).max(1.0) as i32;
+        hb_font.set_scale(scale, scale);
+
+        Ok(Self {
+            data,
+            font: hb_font,
+        })
     }
 
-    fn close(&mut self) {
-        self.builder.close();
+    fn font(&self) -> &HbFont<'static> {
+        &self.font
+    }
+}
+
+#[derive(Debug)]
+struct TtfFaceEntry {
+    data: Arc<FontDataEntry>,
+    face: TtfFace<'static>,
+}
+
+impl TtfFaceEntry {
+    fn new(data: Arc<FontDataEntry>) -> Result<Self> {
+        let face = TtfFace::parse(data.as_static_slice(), data.face_index)
+            .map_err(|_| O4eError::InvalidFontData)?;
+        Ok(Self { data, face })
+    }
+
+    fn face(&self) -> &TtfFace<'static> {
+        &self.face
+    }
+
+    fn font_key(&self) -> FontKey {
+        self.data.font_key()
     }
 }
 
@@ -70,51 +123,45 @@ impl HarfBuzzBackend {
         Self {
             cache: FontCache::new(512),
             hb_cache: RwLock::new(LruCache::new(NonZeroUsize::new(64).unwrap())),
-            face_cache: RwLock::new(HashMap::new()),
             ttf_cache: RwLock::new(HashMap::new()),
+            font_data_cache: RwLock::new(HashMap::new()),
+            font_db: FontDatabase::global(),
             segmenter: TextSegmenter::new(),
         }
     }
-    fn load_font_data(&self, font: &Font) -> Result<Arc<Vec<u8>>> {
-        // Check cache first
-        {
-            let cache = self.face_cache.read();
-            if let Some(data) = cache.get(&font.family) {
-                return Ok(data.clone());
+
+    fn resolve_font_path(&self, font: &Font) -> Result<PathBuf> {
+        let requested = Path::new(&font.family);
+        if requested.exists() {
+            return Ok(canonicalize_path(requested));
+        }
+
+        if let Some(path) = self.family_path_cache.read().get(&font.family).cloned() {
+            return Ok(path);
+        }
+
+        for dir in font_search_dirs() {
+            if dir.as_os_str().is_empty() {
+                continue;
             }
-        }
 
-        // Try to load from file path
-        let font_path = std::path::Path::new(&font.family);
-        if font_path.exists() {
-            let data = std::fs::read(font_path)
-                .map_err(|e| O4eError::font_load(font_path.to_owned(), e))?;
-            let data = Arc::new(data);
+            let direct = dir.join(&font.family);
+            if direct.exists() {
+                let resolved = canonicalize_path(&direct);
+                self.family_path_cache
+                    .write()
+                    .insert(font.family.clone(), resolved.clone());
+                return Ok(resolved);
+            }
 
-            let mut cache = self.face_cache.write();
-            cache.insert(font.family.clone(), data.clone());
-
-            return Ok(data);
-        }
-
-        // Try system fonts (simplified for now)
-        let system_dirs = o4e_core::utils::system_font_dirs();
-        for dir in system_dirs {
-            let expanded = shellexpand::tilde(&dir);
-            let dir_path = std::path::Path::new(expanded.as_ref());
-
-            // Try with .ttf and .otf extensions
-            for ext in &["ttf", "otf", "ttc"] {
-                let font_file = dir_path.join(format!("{}.{}", font.family, ext));
-                if font_file.exists() {
-                    let data = std::fs::read(&font_file)
-                        .map_err(|e| O4eError::font_load(font_file.clone(), e))?;
-                    let data = Arc::new(data);
-
-                    let mut cache = self.face_cache.write();
-                    cache.insert(font.family.clone(), data.clone());
-
-                    return Ok(data);
+            for ext in ["ttf", "otf", "ttc"] {
+                let candidate = dir.join(format!("{}.{}", font.family, ext));
+                if candidate.exists() {
+                    let resolved = canonicalize_path(&candidate);
+                    self.family_path_cache
+                        .write()
+                        .insert(font.family.clone(), resolved.clone());
+                    return Ok(resolved);
                 }
             }
         }
@@ -124,74 +171,183 @@ impl HarfBuzzBackend {
         })
     }
 
-    fn get_or_create_ttf_face(&self, font: &Font) -> Result<Arc<TtfFace<'static>>> {
-        let cache_key = font.family.clone();
-
-        // Check cache
-        {
-            let cache = self.ttf_cache.read();
-            if let Some(face) = cache.get(&cache_key) {
-                return Ok(face.clone());
-            }
+    fn load_font_data(&self, font: &Font) -> Result<Arc<FontDataEntry>> {
+        let handle = self.font_db.resolve(font)?;
+        let key = handle.key.clone();
+        if let Some(entry) = self.font_data_cache.read().get(&key) {
+            return Ok(entry.clone());
         }
 
-        // Load font data
+        let entry = Arc::new(FontDataEntry::from_handle(handle));
+        self.font_data_cache.write().insert(key, entry.clone());
+        Ok(entry)
+    }
+    fn get_or_create_ttf_face(&self, font: &Font) -> Result<Arc<TtfFaceEntry>> {
         let font_data = self.load_font_data(font)?;
+        let cache_key = font_data.key();
 
-        // Create TtfFace
-        // We need to leak the data to get 'static lifetime
-        let leaked_data: &'static [u8] = Box::leak(font_data.to_vec().into_boxed_slice());
-
-        let ttf_face =
-            TtfFace::from_slice(leaked_data, 0).map_err(|_| O4eError::InvalidFontData)?;
-
-        let ttf_face = Arc::new(ttf_face);
-
-        // Cache it
-        {
-            let mut cache = self.ttf_cache.write();
-            cache.insert(cache_key, ttf_face.clone());
+        if let Some(entry) = self.ttf_cache.read().get(&cache_key) {
+            return Ok(entry.clone());
         }
 
-        Ok(ttf_face)
+        let entry = Arc::new(TtfFaceEntry::new(font_data)?);
+        self.ttf_cache.write().insert(cache_key, entry.clone());
+        Ok(entry)
     }
 
-    fn get_or_create_hb_font(&self, font: &Font) -> Result<Arc<Owned<HbFont<'static>>>> {
-        let cache_key = format!("{}:{}", font.family, font.size as u32);
+    fn get_or_create_hb_font(&self, font: &Font) -> Result<Arc<HbFontEntry>> {
+        let font_data = self.load_font_data(font)?;
+        let cache_key = format!("{}:{}", font_data.key(), quantize_size(font.size));
 
-        // Check cache
         {
             let mut cache = self.hb_cache.write();
-            if let Some(hb_font) = cache.get(&cache_key) {
-                return Ok(hb_font.clone());
+            if let Some(entry) = cache.get(&cache_key) {
+                return Ok(entry.clone());
             }
         }
 
-        // Load font data
-        let font_data = self.load_font_data(font)?;
-
-        // Create HarfBuzz font
-        // We need to leak the data to get 'static lifetime for HarfBuzz
-        let leaked_data: &'static [u8] = Box::leak(font_data.to_vec().into_boxed_slice());
-
-        let hb_face = HbFace::from_bytes(leaked_data, 0);
-
-        let mut hb_font = HbFont::new(hb_face);
-
-        // Set font size in HarfBuzz units
-        let _units_per_em = hb_font.face().upem() as f32;
-        let scale = (font.size * 64.0) as i32; // Convert to 26.6 fixed point
-        hb_font.set_scale(scale, scale);
-
-        let hb_font = Arc::new(hb_font);
-
-        // Cache it
+        let entry = Arc::new(HbFontEntry::new(font_data, font.size)?);
         {
             let mut cache = self.hb_cache.write();
-            cache.push(cache_key, hb_font.clone());
+            cache.push(cache_key, entry.clone());
+        }
+        Ok(entry)
+    }
+
+    fn resolve_run_font(&self, run: &TextRun, requested: &Font) -> Font {
+        if let Some(run_font) = run.font.as_ref() {
+            if self.font_supports_run(run_font, run) {
+                return run_font.clone();
+            }
         }
 
-        Ok(hb_font)
+        if self.font_supports_run(requested, run) {
+            return requested.clone();
+        }
+
+        for candidate in script_fallbacks(&run.script) {
+            let mut fallback = requested.clone();
+            fallback.family = candidate.to_string();
+            fallback.source = FontSource::Family(candidate.to_string());
+            if self.font_supports_run(&fallback, run) {
+                return fallback;
+            }
+        }
+
+        log::warn!(
+            "No fallback font found for script '{}' using '{}'; falling back to specified font",
+            run.script,
+            requested.family
+        );
+        requested.clone()
+    }
+
+    fn font_supports_run(&self, font: &Font, run: &TextRun) -> bool {
+        match self.get_or_create_ttf_face(font) {
+            Ok(entry) => run
+                .text
+                .chars()
+                .all(|ch| entry.face().glyph_index(ch).is_some()),
+            Err(_) => false,
+        }
+    }
+
+    fn rasterize_glyph(
+        &self,
+        ttf_face: &TtfFace<'static>,
+        glyph: &Glyph,
+        scale: f32,
+        antialias: bool,
+    ) -> Option<RenderedGlyph> {
+        let path = match glyph_path(ttf_face, glyph, scale) {
+            Some(path) => path,
+            None => return Some(blank_rendered_glyph()),
+        };
+
+        let bounds = path.bounds();
+        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+            return Some(blank_rendered_glyph());
+        }
+
+        let width = bounds.width().ceil().max(1.0) as u32;
+        let height = bounds.height().ceil().max(1.0) as u32;
+        let mut mask_pixmap = Pixmap::new(width, height)?;
+
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(255, 255, 255, 255));
+        paint.anti_alias = antialias;
+
+        let transform = Transform::from_translate(-bounds.left(), -bounds.top());
+        mask_pixmap.fill_path(&path, &paint, FillRule::Winding, transform, None);
+
+        let mut mask = Vec::with_capacity((width * height) as usize);
+        for pixel in mask_pixmap.data().chunks_exact(4) {
+            mask.push(pixel[3]);
+        }
+
+        Some(RenderedGlyph {
+            bitmap: mask,
+            width,
+            height,
+            left: bounds.left(),
+            top: bounds.top(),
+        })
+    }
+
+    fn draw_cached_glyph(
+        &self,
+        target: &mut Pixmap,
+        glyph: &Glyph,
+        cached: &RenderedGlyph,
+        baseline_y: f32,
+        padding: f32,
+        scratch: &mut Vec<u8>,
+        base_r: u16,
+        base_g: u16,
+        base_b: u16,
+        text_alpha: u8,
+    ) {
+        if cached.width == 0 || cached.height == 0 {
+            return;
+        }
+
+        let pixels = (cached.width * cached.height) as usize;
+        let required = pixels * 4;
+        scratch.clear();
+        scratch.resize(required, 0);
+
+        let alpha_component = u16::from(text_alpha);
+        for (idx, coverage) in cached.bitmap.iter().enumerate() {
+            let cov = u16::from(*coverage);
+            let offset = idx * 4;
+            scratch[offset] = ((base_r * cov + 127) / 255) as u8;
+            scratch[offset + 1] = ((base_g * cov + 127) / 255) as u8;
+            scratch[offset + 2] = ((base_b * cov + 127) / 255) as u8;
+            scratch[offset + 3] = ((alpha_component * cov + 127) / 255) as u8;
+        }
+
+        let Some(pixmap_ref) =
+            PixmapRef::from_bytes(&scratch[..required], cached.width, cached.height)
+        else {
+            return;
+        };
+
+        let dest_x = glyph.x + padding + cached.left;
+        let dest_y = baseline_y + cached.top;
+        let base_x = dest_x.floor() as i32;
+        let base_y = dest_y.floor() as i32;
+        let frac_x = dest_x - base_x as f32;
+        let frac_y = dest_y - base_y as f32;
+
+        let paint = PixmapPaint::default();
+        target.draw_pixmap(
+            base_x,
+            base_y,
+            pixmap_ref,
+            &paint,
+            Transform::from_translate(frac_x, frac_y),
+            None,
+        );
     }
 
     fn script_tag(script: &str) -> Tag {
@@ -218,7 +374,9 @@ impl Backend for HarfBuzzBackend {
     }
 
     fn shape(&self, run: &TextRun, font: &Font) -> Result<ShapingResult> {
-        let hb_font = self.get_or_create_hb_font(font)?;
+        let resolved_font = self.resolve_run_font(run, font);
+        let hb_entry = self.get_or_create_hb_font(&resolved_font)?;
+        let hb_font = hb_entry.font();
 
         // Create script tag from script name
         let script_tag = Self::script_tag(&run.script);
@@ -235,7 +393,7 @@ impl Backend for HarfBuzzBackend {
             .set_language(Language::from_str(&run.language).unwrap_or_default());
 
         // Shape the text
-        let output = harfbuzz_rs::shape(&hb_font, buffer, &[]);
+        let output = harfbuzz_rs::shape(hb_font, buffer, &[]);
 
         // Extract glyph information
         let mut glyphs = Vec::new();
@@ -256,14 +414,15 @@ impl Backend for HarfBuzzBackend {
             x_pos += pos.x_advance as f32 * scale;
         }
 
-        let bbox = o4e_core::utils::calculate_bbox(&glyphs);
+        let bbox = calculate_bbox(&glyphs);
 
         Ok(ShapingResult {
             text: run.text.clone(),
             glyphs,
             advance: x_pos,
             bbox,
-            font: Some(font.clone()),
+            font: Some(resolved_font),
+            direction: run.direction,
         })
     }
 
@@ -284,7 +443,8 @@ impl Backend for HarfBuzzBackend {
             .ok_or_else(|| O4eError::render("Font information missing from shaped result"))?;
 
         // Get the TrueType face for glyph rendering
-        let ttf_face = self.get_or_create_ttf_face(font)?;
+        let face_entry = self.get_or_create_ttf_face(font)?;
+        let ttf_face = face_entry.face();
 
         // Calculate image dimensions
         let padding = options.padding as f32;
@@ -306,11 +466,6 @@ impl Backend for HarfBuzzBackend {
             pixmap.fill(Color::from_rgba8(bg_r, bg_g, bg_b, bg_a));
         }
 
-        // Create paint for text rendering
-        let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(text_r, text_g, text_b, text_a));
-        paint.anti_alias = options.antialias != o4e_core::types::AntialiasMode::None;
-
         // Calculate scale factor
         let units_per_em = ttf_face.units_per_em();
         let scale = font.size / units_per_em as f32;
@@ -319,24 +474,47 @@ impl Backend for HarfBuzzBackend {
         let ascender = ttf_face.ascender() as f32 * scale;
         let baseline_y = padding + ascender;
 
-        // Render each glyph
-        for glyph in &shaped.glyphs {
-            let glyph_id = ttf_parser::GlyphId(glyph.id as u16);
+        let font_key = face_entry.font_key();
+        let glyph_size = quantize_size(font.size);
+        let mut scratch_rgba = Vec::new();
+        let base_r = (u16::from(text_r) * u16::from(text_a) + 127) / 255;
+        let base_g = (u16::from(text_g) * u16::from(text_a) + 127) / 255;
+        let base_b = (u16::from(text_b) * u16::from(text_a) + 127) / 255;
 
-            // Build glyph outline
-            let mut builder = SkiaOutlineBuilder {
-                builder: PathBuilder::new(),
-                scale,
+        // Render each glyph using the shared glyph cache
+        for glyph in &shaped.glyphs {
+            let glyph_key = GlyphKey {
+                font_key: font_key.clone(),
+                glyph_id: glyph.id,
+                size: glyph_size,
             };
 
-            if ttf_face.outline_glyph(glyph_id, &mut builder).is_some() {
-                if let Some(path) = builder.builder.finish() {
-                    // Apply glyph transform
-                    let transform = Transform::from_translate(glyph.x + padding, baseline_y);
-
-                    pixmap.fill_path(&path, &paint, FillRule::Winding, transform, None);
+            let cached = if let Some(entry) = self.cache.get_glyph(&glyph_key) {
+                entry
+            } else {
+                match self.rasterize_glyph(
+                    ttf_face,
+                    glyph,
+                    scale,
+                    options.antialias != o4e_core::types::AntialiasMode::None,
+                ) {
+                    Some(rendered) => self.cache.cache_glyph(glyph_key, rendered),
+                    None => continue,
                 }
-            }
+            };
+
+            self.draw_cached_glyph(
+                &mut pixmap,
+                glyph,
+                cached.as_ref(),
+                baseline_y,
+                padding,
+                &mut scratch_rgba,
+                base_r,
+                base_g,
+                base_b,
+                text_a,
+            );
         }
 
         // Convert to requested format
@@ -382,7 +560,7 @@ impl Backend for HarfBuzzBackend {
     fn clear_cache(&self) {
         self.cache.clear();
         self.hb_cache.write().clear();
-        self.face_cache.write().clear();
+        self.font_data_cache.write().clear();
         self.ttf_cache.write().clear();
     }
 }
@@ -393,10 +571,62 @@ impl Default for HarfBuzzBackend {
     }
 }
 
+fn glyph_path(ttf_face: &TtfFace<'static>, glyph: &Glyph, scale: f32) -> Option<SkiaPath> {
+    let gid = u16::try_from(glyph.id).ok()?;
+    let outline = recorded_glyph_path(ttf_face, GlyphId(gid), scale)?;
+    bez_path_to_skia(&outline)
+}
+
+fn bez_path_to_skia(path: &BezPath) -> Option<SkiaPath> {
+    if path.elements().is_empty() {
+        return None;
+    }
+
+    let mut builder = PathBuilder::new();
+    for element in path.elements() {
+        match *element {
+            PathEl::MoveTo(p) => builder.move_to(p.x as f32, p.y as f32),
+            PathEl::LineTo(p) => builder.line_to(p.x as f32, p.y as f32),
+            PathEl::QuadTo(ctrl, end) => {
+                builder.quad_to(ctrl.x as f32, ctrl.y as f32, end.x as f32, end.y as f32)
+            }
+            PathEl::CurveTo(c1, c2, end) => builder.cubic_to(
+                c1.x as f32,
+                c1.y as f32,
+                c2.x as f32,
+                c2.y as f32,
+                end.x as f32,
+                end.y as f32,
+            ),
+            PathEl::ClosePath => builder.close(),
+        }
+    }
+    builder.finish()
+}
+
+fn blank_rendered_glyph() -> RenderedGlyph {
+    RenderedGlyph {
+        bitmap: Vec::new(),
+        width: 0,
+        height: 0,
+        left: 0.0,
+        top: 0.0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use serde::Deserialize;
+    use std::collections::HashSet;
+    use std::{fs, path::PathBuf, sync::Once};
+
+    #[derive(Deserialize)]
+    struct ShapeFixture {
+        text: String,
+        glyph_ids: Vec<u32>,
+        font: String,
+    }
 
     fn fixture_font_path(name: &str) -> String {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -409,6 +639,29 @@ mod tests {
 
     fn fixture_font(name: &str) -> Font {
         Font::new(fixture_font_path(name), 48.0)
+    }
+
+    fn ensure_test_fonts() {
+        static INSTALL: Once = Once::new();
+        INSTALL.call_once(|| {
+            let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/fonts");
+            let existing = std::env::var_os("O4E_FONT_DIRS");
+            let mut paths: Vec<PathBuf> = existing
+                .map(|value| std::env::split_paths(&value).collect())
+                .unwrap_or_default();
+            if !paths.iter().any(|p| p == &dir) {
+                paths.push(dir.clone());
+            }
+            let joined = std::env::join_paths(paths).expect("join font dirs");
+            std::env::set_var("O4E_FONT_DIRS", joined);
+        });
+    }
+
+    fn load_fixture(name: &str) -> ShapeFixture {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../../testdata/expected/harfbuzz/{name}.json"));
+        let data = fs::read_to_string(&path).expect("fixture readable");
+        serde_json::from_str(&data).expect("fixture valid")
     }
 
     #[test]
@@ -465,14 +718,15 @@ mod tests {
 
     #[test]
     fn test_shape_arabic_text_produces_contextual_forms() {
+        ensure_test_fonts();
         let backend = HarfBuzzBackend::new();
         let mut options = SegmentOptions::default();
         options.script_itemize = true;
         options.bidi_resolve = true;
         options.language = Some("ar".to_string());
-        let text = "مرحبا بالعالم";
+        let fixture = load_fixture("arabic_glyphs");
 
-        let runs = backend.segment(text, &options).unwrap();
+        let runs = backend.segment(&fixture.text, &options).unwrap();
         assert_eq!(runs.len(), 1, "Arabic text should stay in a single run");
         let run = &runs[0];
         assert_eq!(
@@ -481,14 +735,10 @@ mod tests {
             "Arabic run must resolve to RTL"
         );
 
-        let font = fixture_font("NotoNaskhArabic-Regular.ttf");
+        let font = fixture_font(&fixture.font);
         let shaped = backend.shape(run, &font).expect("Arabic shaping succeeds");
         let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
-        let expected_ids = vec![486, 452, 4, 309, 452, 4, 38, 1374, 4, 37, 140, 212, 488];
-        assert_eq!(
-            glyph_ids, expected_ids,
-            "Arabic contextual glyph ids regressed"
-        );
+        assert_eq!(glyph_ids, fixture.glyph_ids, "Arabic glyph ids regressed");
 
         let clusters: Vec<u32> = shaped.glyphs.iter().map(|g| g.cluster).collect();
         assert!(
@@ -508,26 +758,26 @@ mod tests {
 
     #[test]
     fn test_shape_devanagari_text_reorders_marks() {
+        ensure_test_fonts();
         let backend = HarfBuzzBackend::new();
         let mut options = SegmentOptions::default();
         options.script_itemize = true;
         options.bidi_resolve = true;
         options.language = Some("hi".to_string());
-        let text = "कक्षा में";
+        let fixture = load_fixture("devanagari_glyphs");
 
-        let runs = backend.segment(text, &options).unwrap();
+        let runs = backend.segment(&fixture.text, &options).unwrap();
         assert_eq!(runs.len(), 1, "Devanagari text should be a single run");
         let run = &runs[0];
         assert_eq!(run.script, "Devanagari");
         assert_eq!(run.direction, Direction::LeftToRight);
 
-        let font = fixture_font("NotoSansDevanagari-Regular.ttf");
+        let font = fixture_font(&fixture.font);
         let shaped = backend
             .shape(run, &font)
             .expect("Devanagari shaping succeeds");
         let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
-        let expected_ids = vec![25, 179, 66, 3, 50, 449];
-        assert_eq!(glyph_ids, expected_ids, "Devanagari glyph ids changed");
+        assert_eq!(glyph_ids, fixture.glyph_ids, "Devanagari glyph ids changed");
 
         let clusters: Vec<u32> = shaped.glyphs.iter().map(|g| g.cluster).collect();
         assert!(
@@ -543,5 +793,146 @@ mod tests {
             shaped.glyphs.iter().any(|g| g.advance == 0.0),
             "At least one mark should have zero advance after reordering"
         );
+    }
+
+    #[test]
+    fn test_shape_arabic_text_uses_script_fallback_when_font_missing() {
+        ensure_test_fonts();
+        let backend = HarfBuzzBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+        options.bidi_resolve = true;
+        options.language = Some("ar".to_string());
+        options.font_fallback = true;
+
+        let fixture = load_fixture("arabic_glyphs");
+        let runs = backend.segment(&fixture.text, &options).unwrap();
+        let fallback_target = Font::new("MissingArabicSupport", 48.0);
+        let template_run = runs.first().expect("at least one run");
+        let merged_run = TextRun {
+            text: fixture.text.clone(),
+            range: (0, fixture.text.len()),
+            script: template_run.script.clone(),
+            language: template_run.language.clone(),
+            direction: template_run.direction,
+            font: None,
+        };
+        let shaped = backend
+            .shape(&merged_run, &fallback_target)
+            .expect("Fallback shaping succeeds");
+        let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
+        assert_eq!(glyph_ids, fixture.glyph_ids, "Fallback glyph ids changed");
+
+        let resolved_font = shaped.font.as_ref().expect("fallback font present");
+        assert_eq!(
+            resolved_font.family, "NotoNaskhArabic-Regular",
+            "expected Arabic fallback font to be Noto Naskh"
+        );
+    }
+
+    #[test]
+    fn test_shape_devanagari_text_uses_script_fallback_when_font_missing() {
+        ensure_test_fonts();
+        let backend = HarfBuzzBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+        options.bidi_resolve = true;
+        options.language = Some("hi".to_string());
+        options.font_fallback = true;
+
+        let fixture = load_fixture("devanagari_glyphs");
+        let runs = backend.segment(&fixture.text, &options).unwrap();
+        let fallback_target = Font::new("MissingDevanagariSupport", 48.0);
+        let template_run = runs.first().expect("at least one run");
+        let merged_run = TextRun {
+            text: fixture.text.clone(),
+            range: (0, fixture.text.len()),
+            script: template_run.script.clone(),
+            language: template_run.language.clone(),
+            direction: template_run.direction,
+            font: None,
+        };
+        let shaped = backend
+            .shape(&merged_run, &fallback_target)
+            .expect("Fallback shaping succeeds");
+        let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
+        assert_eq!(glyph_ids, fixture.glyph_ids, "Fallback glyph ids changed");
+
+        let resolved_font = shaped.font.as_ref().expect("fallback font present");
+        assert_eq!(
+            resolved_font.family, "NotoSansDevanagari-Regular",
+            "expected Devanagari fallback font to be Noto Sans Devanagari"
+        );
+    }
+
+    #[test]
+    fn test_render_populates_glyph_cache() {
+        let backend = HarfBuzzBackend::new();
+        let font = fixture_font("NotoSans-Regular.ttf");
+        let runs = backend
+            .segment("Cache test", &SegmentOptions::default())
+            .unwrap();
+        let shaped = backend.shape(&runs[0], &font).unwrap();
+        let mut options = RenderOptions::default();
+        options.format = o4e_core::types::RenderFormat::Raw;
+
+        backend.render(&shaped, &options).unwrap();
+        let unique_glyphs: HashSet<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
+        let stats = backend.cache.stats();
+        assert!(
+            stats.glyph_count >= unique_glyphs.len(),
+            "glyph cache should contain rendered glyphs"
+        );
+    }
+
+    #[test]
+    fn test_render_reuses_cached_glyphs() {
+        let backend = HarfBuzzBackend::new();
+        let font = fixture_font("NotoSans-Regular.ttf");
+        let runs = backend
+            .segment("Re-render", &SegmentOptions::default())
+            .unwrap();
+        let shaped = backend.shape(&runs[0], &font).unwrap();
+        let mut options = RenderOptions::default();
+        options.format = o4e_core::types::RenderFormat::Raw;
+
+        backend.render(&shaped, &options).unwrap();
+        let first = backend.cache.stats().glyph_count;
+
+        backend.render(&shaped, &options).unwrap();
+        let second = backend.cache.stats().glyph_count;
+
+        assert_eq!(
+            first, second,
+            "glyph cache should not grow when re-rendering the same glyphs"
+        );
+    }
+
+    #[test]
+    fn test_clear_cache_empties_internal_layers() {
+        ensure_test_fonts();
+        let backend = HarfBuzzBackend::new();
+        let font = fixture_font("NotoSans-Regular.ttf");
+        let runs = backend
+            .segment("Cache warmup", &SegmentOptions::default())
+            .unwrap();
+        let shaped = backend.shape(&runs[0], &font).unwrap();
+        backend.render(&shaped, &RenderOptions::default()).unwrap();
+
+        assert!(
+            backend.cache.stats().glyph_count > 0,
+            "glyph cache should be populated before clearing"
+        );
+        assert!(backend.hb_cache.read().len() > 0);
+        assert!(backend.ttf_cache.read().len() > 0);
+        assert!(backend.font_data_cache.read().len() > 0);
+
+        backend.clear_cache();
+        let stats = backend.cache.stats();
+        assert!(stats.is_empty(), "cache stats after clear: {:?}", stats);
+        assert_eq!(backend.hb_cache.read().len(), 0);
+        assert_eq!(backend.ttf_cache.read().len(), 0);
+        assert_eq!(backend.font_data_cache.read().len(), 0);
+        assert_eq!(backend.family_path_cache.read().len(), 0);
     }
 }

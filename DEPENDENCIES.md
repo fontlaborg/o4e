@@ -63,6 +63,15 @@ This document lists all project dependencies and explains why each was chosen.
 - Simpler than alternatives (fontdue, ab_glyph)
 - Designed for font rendering use case
 
+#### `kurbo = "0.11"`
+**Purpose:** Shared Bézier path representation for glyph outlines (SVG + raster backends)
+**Why chosen:**
+- Provides a consistent `BezPath` type for converting `ttf-parser` outlines into reusable geometry
+- Used heavily in the Druid/piet ecosystem; well maintained and numerically stable
+- Zero native dependencies; perfect for sharing outline logic across crates
+- Lets us simplify paths, emit SVG commands, and convert into tiny-skia paths without bespoke builders
+- Cleaner than keeping duplicate outline recorders per backend
+
 ### Image Output
 
 #### `image = "0.25"` (features: png, jpeg)

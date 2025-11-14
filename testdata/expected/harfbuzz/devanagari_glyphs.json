@@ -1,0 +1,6 @@
+{
+  "_this_file": "testdata/expected/harfbuzz/devanagari_glyphs.json",
+  "text": "कक्षा में",
+  "glyph_ids": [25, 179, 66, 3, 50, 449],
+  "font": "NotoSansDevanagari-Regular.ttf"
+}

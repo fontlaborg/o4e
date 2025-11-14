@@ -8,6 +8,7 @@ description = "Rendering utilities for o4e text engine"
 
 [dependencies]
 o4e-core = { path = "../../backends/o4e-core" }
+o4e-fontdb = { path = "../o4e-fontdb" }
 thiserror.workspace = true
 anyhow.workspace = true
 log.workspace = true

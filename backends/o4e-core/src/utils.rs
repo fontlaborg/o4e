@@ -2,7 +2,7 @@
 
 //! Utility functions for the o4e rendering engine.
 
-use crate::types::{BoundingBox, Glyph, ShapingResult};
+use crate::types::{BoundingBox, Direction, Font, Glyph, ShapingResult};
 
 /// Calculate bounding box for a set of glyphs
 pub fn calculate_bbox(glyphs: &[Glyph]) -> BoundingBox {
@@ -46,8 +46,20 @@ pub fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
     let mut total_advance = 0.0;
     let mut x_offset = 0.0;
     let mut combined_text = String::new();
+    let mut combined_font: Option<Font> = None;
+    let mut combined_direction = Direction::LeftToRight;
+    let mut direction_set = false;
 
     for mut result in results {
+        if !direction_set {
+            combined_direction = result.direction;
+            direction_set = true;
+        }
+        if combined_font.is_none() {
+            if let Some(font) = result.font.clone() {
+                combined_font = Some(font);
+            }
+        }
         if !result.text.is_empty() {
             combined_text.push_str(&result.text);
         }
@@ -67,7 +79,8 @@ pub fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
         glyphs: all_glyphs,
         advance: total_advance,
         bbox,
-        font: None, // Combined results don't have a single font
+        font: combined_font,
+        direction: combined_direction,
     }
 }
 

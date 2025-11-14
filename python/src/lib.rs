@@ -574,6 +574,7 @@ fn empty_shaping_result(font: &CoreFont) -> CoreShapingResult {
             height: font.size.max(1.0),
         },
         font: Some(font.clone()),
+        direction: Direction::LeftToRight,
     }
 }
 
