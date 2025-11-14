@@ -113,6 +113,8 @@ impl Glyph {
 #[derive(Clone)]
 struct ShapingResult {
     #[pyo3(get)]
+    text: String,
+    #[pyo3(get)]
     glyphs: Vec<Glyph>,
     #[pyo3(get)]
     advance: f32,
@@ -125,6 +127,7 @@ struct ShapingResult {
 impl ShapingResult {
     fn from_core(result: &CoreShapingResult) -> Self {
         Self {
+            text: result.text.clone(),
             glyphs: result.glyphs.iter().map(Glyph::from_core).collect(),
             advance: result.advance,
             width: result.bbox.width,
@@ -561,6 +564,7 @@ fn parse_hinting(value: &Bound<'_, PyAny>) -> PyResult<HintingMode> {
 
 fn empty_shaping_result(font: &CoreFont) -> CoreShapingResult {
     CoreShapingResult {
+        text: String::new(),
         glyphs: Vec::new(),
         advance: 0.0,
         bbox: BoundingBox {

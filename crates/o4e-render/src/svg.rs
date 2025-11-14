@@ -55,6 +55,7 @@ impl SvgRenderer {
 
         // Render each glyph as a path (placeholder for now)
         for (i, glyph) in shaped.glyphs.iter().enumerate() {
+            let mut emitted_path = false;
             if options.include_paths {
                 let path = extract_glyph_path(glyph, shaped.font.as_ref());
                 let simplified = if self.simplify && !path.is_empty() {
@@ -74,9 +75,12 @@ impl SvgRenderer {
                         p = self.precision
                     );
                     svg.push('\n');
+                    emitted_path = true;
                 }
-            } else {
-                // Simple rectangle placeholder when path extraction is not enabled
+            }
+
+            if !emitted_path {
+                // Simple rectangle placeholder when path extraction is not available
                 let _ = write!(
                     &mut svg,
                     r#"    <rect x="{:.p$}" y="{:.p$}" width="{:.p$}" height="1" />"#,
@@ -193,6 +197,36 @@ fn simplify_path(path: &str, precision: usize) -> String {
 mod tests {
     use super::*;
 
+    fn sample_shaping_result() -> ShapingResult {
+        ShapingResult {
+            text: "ab".to_string(),
+            glyphs: vec![
+                Glyph {
+                    id: 1,
+                    cluster: 0,
+                    x: 0.0,
+                    y: 0.0,
+                    advance: 10.0,
+                },
+                Glyph {
+                    id: 2,
+                    cluster: 1,
+                    x: 10.0,
+                    y: 0.0,
+                    advance: 12.0,
+                },
+            ],
+            advance: 22.0,
+            bbox: BoundingBox {
+                x: 0.0,
+                y: -1.0,
+                width: 22.0,
+                height: 2.0,
+            },
+            font: None,
+        }
+    }
+
     #[test]
     fn test_svg_renderer_creation() {
         let renderer = SvgRenderer::default();
@@ -204,6 +238,7 @@ mod tests {
     fn test_empty_render() {
         let renderer = SvgRenderer::default();
         let shaped = ShapingResult {
+            text: String::new(),
             glyphs: vec![],
             advance: 0.0,
             bbox: BoundingBox {
@@ -226,5 +261,42 @@ mod tests {
         let simplified = simplify_path(path, 2);
         assert!(simplified.contains("10.12"));
         assert!(simplified.contains("20.99"));
+    }
+
+    #[test]
+    fn test_render_simple_text_produces_rectangles() {
+        let renderer = SvgRenderer::default();
+        let shaped = sample_shaping_result();
+        let svg = renderer.render(&shaped, &SvgOptions::default());
+        assert!(
+            svg.contains("<rect"),
+            "SVG should contain fallback rectangles"
+        );
+    }
+
+    #[test]
+    fn test_render_complex_positions_adjust_viewbox() {
+        let renderer = SvgRenderer::default();
+        let mut shaped = sample_shaping_result();
+        shaped.glyphs[0].x = -5.0;
+        shaped.glyphs[1].x = 15.0;
+        let svg = renderer.render(&shaped, &SvgOptions::default());
+        let expected = format!("viewBox=\"{:.2} {:.2} {:.2} {:.2}\"", -5.0, -1.0, 32.0, 1.5);
+        assert!(
+            svg.contains(&expected),
+            "ViewBox should match calculated bounding box ({expected}), got {svg}"
+        );
+    }
+
+    #[test]
+    fn test_svg_output_is_well_formed() {
+        let renderer = SvgRenderer::default();
+        let svg = renderer.render(&sample_shaping_result(), &SvgOptions::default());
+        assert!(svg.starts_with("<svg "), "SVG should start with root tag");
+        assert!(svg.contains("</g>"), "SVG should close group tag");
+        assert!(
+            svg.trim_end().ends_with("</svg>"),
+            "SVG should end with closing tag"
+        );
     }
 }

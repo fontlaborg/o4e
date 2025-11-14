@@ -5,7 +5,7 @@
 #![cfg(target_os = "macos")]
 
 use core_foundation::{
-    attributed_string::{CFAttributedString, CFMutableAttributedString},
+    attributed_string::CFMutableAttributedString,
     base::{CFRange, TCFType},
     string::CFString,
 };
@@ -21,10 +21,10 @@ use core_text::{
 };
 use lru::LruCache;
 use o4e_core::{
-    types::{Direction, RenderFormat},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
-    SegmentOptions, ShapingResult, TextRun,
+    types::RenderFormat, Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions,
+    RenderOutput, Result, SegmentOptions, ShapingResult, TextRun,
 };
+use o4e_unicode::TextSegmenter;
 use parking_lot::RwLock;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -33,6 +33,7 @@ pub struct CoreTextBackend {
     cache: FontCache,
     ct_font_cache: RwLock<LruCache<String, Arc<CTFont>>>,
     shape_cache: RwLock<LruCache<String, Arc<ShapingResult>>>,
+    segmenter: TextSegmenter,
 }
 
 impl CoreTextBackend {
@@ -41,6 +42,7 @@ impl CoreTextBackend {
             cache: FontCache::new(512),
             ct_font_cache: RwLock::new(LruCache::new(NonZeroUsize::new(64).unwrap())),
             shape_cache: RwLock::new(LruCache::new(NonZeroUsize::new(256).unwrap())),
+            segmenter: TextSegmenter::new(),
         }
     }
 
@@ -100,20 +102,7 @@ impl CoreTextBackend {
 
 impl Backend for CoreTextBackend {
     fn segment(&self, text: &str, options: &SegmentOptions) -> Result<Vec<TextRun>> {
-        // For now, create a single run for the entire text
-        // TODO: Implement proper segmentation using CFStringTokenizer
-        let mut runs = Vec::new();
-
-        runs.push(TextRun {
-            text: text.to_string(),
-            range: (0, text.len()),
-            script: "Latin".to_string(),
-            language: options.language.clone().unwrap_or_else(|| "en".to_string()),
-            direction: Direction::LeftToRight,
-            font: None,
-        });
-
-        Ok(runs)
+        self.segmenter.segment(text, options)
     }
 
     fn shape(&self, run: &TextRun, font: &Font) -> Result<ShapingResult> {
@@ -158,6 +147,7 @@ impl Backend for CoreTextBackend {
         let bbox = o4e_core::utils::calculate_bbox(&glyphs);
 
         let result = ShapingResult {
+            text: run.text.clone(),
             glyphs,
             advance: width,
             bbox,
@@ -249,10 +239,12 @@ impl Backend for CoreTextBackend {
         // Calculate baseline position
         let baseline_y = padding as f64 + ct_font.ascent();
 
-        // For CoreText, we need to render text via CTLine
-        // For now, we'll use a simple "Hello World" as a placeholder
-        // In production, we'd track the original text through the pipeline
-        let text_to_render = "Hello World";
+        // Recreate text via CoreText using the shaped run text
+        let text_to_render = if shaped.text.trim().is_empty() {
+            " "
+        } else {
+            shaped.text.as_str()
+        };
 
         // Create attributed string and line for rendering
         let attributed_string = self.create_attributed_string(text_to_render, font)?;
@@ -321,6 +313,61 @@ impl Default for CoreTextBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use o4e_core::types::Direction;
+
+    fn assert_script_rendered(text: &str, font_name: &str) {
+        let backend = CoreTextBackend::new();
+        let font = Font::new(font_name, 42.0);
+
+        if backend.get_or_create_ct_font(&font).is_err() {
+            eprintln!(
+                "Skipping CoreText script test because font '{}' is unavailable on this system",
+                font_name
+            );
+            return;
+        }
+
+        let mut segment_options = SegmentOptions::default();
+        segment_options.script_itemize = true;
+        segment_options.bidi_resolve = true;
+
+        let runs = backend.segment(text, &segment_options).unwrap();
+        assert!(
+            !runs.is_empty(),
+            "CoreText should produce at least one run for '{}':{}",
+            font_name,
+            text
+        );
+
+        let render_options = RenderOptions::default();
+        let mut reconstructed = String::new();
+
+        for run in runs {
+            let shaped = backend.shape(&run, &font).unwrap();
+            assert_eq!(shaped.text, run.text);
+            assert!(
+                !shaped.glyphs.is_empty(),
+                "Shaping should yield glyphs for '{}' using font '{}'",
+                text,
+                font_name
+            );
+            reconstructed.push_str(&shaped.text);
+
+            match backend.render(&shaped, &render_options).unwrap() {
+                RenderOutput::Bitmap(bitmap) => {
+                    assert!(bitmap.width > 0);
+                    assert!(bitmap.height > 0);
+                    assert!(!bitmap.data.is_empty());
+                }
+                other => panic!(
+                    "CoreText raw rendering should return a bitmap, got {:?}",
+                    other
+                ),
+            }
+        }
+
+        assert_eq!(reconstructed, text);
+    }
 
     #[test]
     fn test_backend_creation() {
@@ -336,5 +383,66 @@ mod tests {
         let runs = backend.segment("Hello World", &options).unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].text, "Hello World");
+    }
+
+    #[test]
+    fn test_segment_latin_text_reports_script_and_direction() {
+        let backend = CoreTextBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+        options.bidi_resolve = true;
+
+        let runs = backend.segment("Hello World", &options).unwrap();
+        assert_eq!(runs.len(), 1, "Latin text should remain a single run");
+        let run = &runs[0];
+        assert_eq!(run.script, "Latin");
+        assert_eq!(run.direction, Direction::LeftToRight);
+    }
+
+    #[test]
+    fn test_segment_arabic_text_detects_rtl_run() {
+        let backend = CoreTextBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+        options.bidi_resolve = true;
+
+        let runs = backend.segment("مرحبا بالعالم", &options).unwrap();
+        assert!(
+            !runs.is_empty(),
+            "Arabic text should yield at least one run"
+        );
+        let arabic_run = runs
+            .iter()
+            .find(|run| run.script == "Arabic")
+            .expect("Arabic run not detected");
+        assert_eq!(arabic_run.direction, Direction::RightToLeft);
+    }
+
+    #[test]
+    fn test_segment_cjk_text_detects_han_script() {
+        let backend = CoreTextBackend::new();
+        let mut options = SegmentOptions::default();
+        options.script_itemize = true;
+
+        let runs = backend.segment("漢字テスト", &options).unwrap();
+        assert!(
+            runs.iter().any(|run| run.script == "Han"),
+            "Expected at least one Han-script run"
+        );
+    }
+
+    #[test]
+    fn test_coretext_render_when_latin_text_provided() {
+        assert_script_rendered("Hello CoreText", "Helvetica");
+    }
+
+    #[test]
+    fn test_coretext_render_when_arabic_text_provided() {
+        assert_script_rendered("مرحبا بالعالم", "Geeza Pro");
+    }
+
+    #[test]
+    fn test_coretext_render_when_cjk_text_provided() {
+        assert_script_rendered("你好世界", "PingFang SC");
     }
 }

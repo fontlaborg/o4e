@@ -9,6 +9,7 @@ description = "CoreText backend for o4e text rendering"
 [dependencies]
 o4e-core = { path = "../o4e-core" }
 o4e-render = { path = "../../crates/o4e-render" }
+o4e-unicode = { path = "../../crates/o4e-unicode" }
 thiserror.workspace = true
 anyhow.workspace = true
 log.workspace = true

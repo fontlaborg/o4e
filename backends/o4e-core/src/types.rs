@@ -71,6 +71,8 @@ pub enum Direction {
 /// Result of text shaping
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapingResult {
+    /// Original text that produced these glyphs
+    pub text: String,
     /// Positioned glyphs
     pub glyphs: Vec<Glyph>,
     /// Total advance width

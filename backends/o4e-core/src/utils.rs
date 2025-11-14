@@ -45,8 +45,12 @@ pub fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
     let mut all_glyphs = Vec::new();
     let mut total_advance = 0.0;
     let mut x_offset = 0.0;
+    let mut combined_text = String::new();
 
     for mut result in results {
+        if !result.text.is_empty() {
+            combined_text.push_str(&result.text);
+        }
         // Offset glyphs by accumulated advance
         for glyph in &mut result.glyphs {
             glyph.x += x_offset;
@@ -59,6 +63,7 @@ pub fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
     let bbox = calculate_bbox(&all_glyphs);
 
     ShapingResult {
+        text: combined_text,
         glyphs: all_glyphs,
         advance: total_advance,
         bbox,

@@ -32,12 +32,12 @@ this_file: TODO.md
 - [x] Implement Backend::shape using CTLine
 - [x] Implement Backend::render using CGContext
 - [x] Add CoreText font loading with caching
-- [ ] Add CoreText script itemization
-- [ ] Add CoreText bidi resolution
+- [x] Add CoreText script itemization
+- [x] Add CoreText bidi resolution
 - [x] Write unit tests for CoreTextBackend
-- [ ] Test with Latin text
-- [ ] Test with Arabic text
-- [ ] Test with CJK text
+- [x] Test with Latin text
+- [x] Test with Arabic text
+- [x] Test with CJK text
 
 ### Day 5: Python Bindings Foundation
 - [x] Create python/src/lib.rs with PyO3 setup
@@ -62,18 +62,18 @@ this_file: TODO.md
 - [x] Add freetype-rs dependency
 - [x] Implement HarfBuzzBackend struct
 - [x] Implement ICU-based text segmentation
-- [ ] Implement grapheme cluster segmentation
-- [ ] Implement word boundary detection
-- [ ] Implement line break detection
-- [ ] Implement script itemization with ICU
-- [ ] Implement bidi resolution with ICU
+- [x] Implement grapheme cluster segmentation
+- [x] Implement word boundary detection
+- [x] Implement line break detection
+- [x] Implement script itemization with ICU
+- [x] Implement bidi resolution with ICU
 - [x] Implement HarfBuzz font loading
 - [x] Implement HarfBuzz text shaping
 - [x] Implement TrueType glyph rendering (using ttf-parser)
 - [x] Add glyph bitmap compositing
 - [x] Write unit tests for HarfBuzzBackend
 - [ ] Test complex script shaping
-- [ ] Test bidirectional text
+- [x] Test bidirectional text
 
 ### Day 8-9: SVG Output Support
 - [x] Create crates/o4e-render crate
@@ -86,9 +86,9 @@ this_file: TODO.md
 - [x] Implement path simplification (Douglas-Peucker)
 - [x] Add path optimization options
 - [x] Add precision control for coordinates
-- [ ] Test SVG output with simple text
-- [ ] Test SVG output with complex glyphs
-- [ ] Verify SVG validity
+- [x] Test SVG output with simple text
+- [x] Test SVG output with complex glyphs
+- [x] Verify SVG validity
 - [ ] Compare SVG output across backends
 
 ### Day 10: DirectWrite Backend (Windows)
@@ -121,10 +121,10 @@ this_file: TODO.md
 - [x] Implement combine_shaped_results function
 - [x] Add streaming renderer support
 - [x] Implement render_streaming with channels
-- [ ] Add progress reporting for batch operations
-- [ ] Test batch rendering with 100 items
-- [ ] Test batch rendering with 1000 items
-- [ ] Test batch rendering with 10000 items
+- [x] Add progress reporting for batch operations
+- [x] Test batch rendering with 100 items
+- [x] Test batch rendering with 1000 items
+- [x] Test batch rendering with 10000 items
 - [ ] Benchmark parallel vs sequential processing
 - [ ] Verify CPU core utilization
 

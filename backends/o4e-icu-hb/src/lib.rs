@@ -3,17 +3,12 @@
 //! ICU+HarfBuzz backend for cross-platform text rendering.
 
 use harfbuzz_rs::{Face as HbFace, Font as HbFont, Language, Owned, Tag, UnicodeBuffer};
-use icu_properties::{
-    maps::{self, CodePointMapDataBorrowed},
-    names::PropertyEnumToValueNameLinearMapperBorrowed,
-    Script,
-};
-use icu_segmenter::{GraphemeClusterSegmenter, LineSegmenter, WordSegmenter};
 use lru::LruCache;
 use o4e_core::{
     types::Direction, Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions,
     RenderOutput, Result, SegmentOptions, ShapingResult, TextRun,
 };
+use o4e_unicode::TextSegmenter;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -21,15 +16,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Transform};
 use ttf_parser::{Face as TtfFace, OutlineBuilder};
-use unicode_bidi::BidiInfo;
 
 pub struct HarfBuzzBackend {
     cache: FontCache,
     hb_cache: RwLock<LruCache<String, Arc<Owned<HbFont<'static>>>>>,
     face_cache: RwLock<HashMap<String, Arc<Vec<u8>>>>,
     ttf_cache: RwLock<HashMap<String, Arc<TtfFace<'static>>>>,
-    script_map: CodePointMapDataBorrowed<'static, Script>,
-    script_name_mapper: PropertyEnumToValueNameLinearMapperBorrowed<'static, Script>,
+    segmenter: TextSegmenter,
 }
 
 /// Outline builder for converting TrueType outlines to tiny-skia paths
@@ -72,13 +65,6 @@ impl OutlineBuilder for SkiaOutlineBuilder {
     }
 }
 
-#[derive(Clone, Copy)]
-struct TextSlice {
-    start: usize,
-    end: usize,
-    direction: Direction,
-}
-
 impl HarfBuzzBackend {
     pub fn new() -> Self {
         Self {
@@ -86,217 +72,9 @@ impl HarfBuzzBackend {
             hb_cache: RwLock::new(LruCache::new(NonZeroUsize::new(64).unwrap())),
             face_cache: RwLock::new(HashMap::new()),
             ttf_cache: RwLock::new(HashMap::new()),
-            script_map: maps::script(),
-            script_name_mapper: Script::enum_to_long_name_mapper(),
+            segmenter: TextSegmenter::new(),
         }
     }
-
-    fn compute_bidi_slices(&self, text: &str, resolve: bool) -> Vec<TextSlice> {
-        if text.is_empty() {
-            return Vec::new();
-        }
-
-        if !resolve {
-            return vec![TextSlice {
-                start: 0,
-                end: text.len(),
-                direction: Direction::LeftToRight,
-            }];
-        }
-
-        let bidi = BidiInfo::new(text, None);
-        let mut slices = Vec::new();
-
-        for paragraph in &bidi.paragraphs {
-            for run in paragraph.runs() {
-                if run.range.start >= run.range.end {
-                    continue;
-                }
-                let direction = if run.level.is_rtl() {
-                    Direction::RightToLeft
-                } else {
-                    Direction::LeftToRight
-                };
-                slices.push(TextSlice {
-                    start: run.range.start,
-                    end: run.range.end,
-                    direction,
-                });
-            }
-        }
-
-        if slices.is_empty() {
-            slices.push(TextSlice {
-                start: 0,
-                end: text.len(),
-                direction: Direction::LeftToRight,
-            });
-        }
-
-        slices
-    }
-
-    fn collect_runs_in_slice(
-        &self,
-        text: &str,
-        slice: TextSlice,
-        cluster_spans: &[(usize, usize)],
-        line_breaks: &[usize],
-        word_breaks: Option<&[usize]>,
-        options: &SegmentOptions,
-        language: &str,
-        runs: &mut Vec<TextRun>,
-    ) {
-        if slice.end <= slice.start {
-            return;
-        }
-
-        let slice_line_breaks: Vec<usize> = line_breaks
-            .iter()
-            .copied()
-            .filter(|idx| *idx > slice.start && *idx < slice.end)
-            .collect();
-        let mut line_cursor = 0usize;
-
-        let slice_word_breaks: Vec<usize> = word_breaks
-            .unwrap_or(&[])
-            .iter()
-            .copied()
-            .filter(|idx| *idx > slice.start && *idx < slice.end)
-            .collect();
-        let mut word_cursor = 0usize;
-
-        let mut run_start = slice.start;
-        let mut current_script: Option<Script> = None;
-
-        for &(cluster_start, cluster_end) in cluster_spans {
-            if cluster_end <= slice.start {
-                continue;
-            }
-            if cluster_start >= slice.end {
-                break;
-            }
-
-            let start = cluster_start.max(slice.start);
-            let end = cluster_end.min(slice.end);
-            if start >= end {
-                continue;
-            }
-
-            let cluster_script = self.detect_script(&text[start..end]);
-            let script_changed = options.script_itemize
-                && self.is_significant_script(cluster_script)
-                && current_script
-                    .map(|existing| existing != cluster_script)
-                    .unwrap_or(false);
-
-            if script_changed && start > run_start {
-                let script_for_run = current_script.unwrap_or(cluster_script);
-                runs.push(self.build_run(
-                    text,
-                    run_start,
-                    start,
-                    script_for_run,
-                    language,
-                    slice.direction,
-                ));
-                run_start = start;
-                current_script = None;
-            }
-
-            if current_script.is_none() && self.is_significant_script(cluster_script) {
-                current_script = Some(cluster_script);
-            }
-
-            let mut boundary_hit = Self::hit_boundary(&slice_line_breaks, &mut line_cursor, end);
-            if !boundary_hit && options.font_fallback && !slice_word_breaks.is_empty() {
-                boundary_hit = Self::hit_boundary(&slice_word_breaks, &mut word_cursor, end);
-            }
-
-            if boundary_hit {
-                if end > run_start {
-                    let script_for_run = current_script.unwrap_or(cluster_script);
-                    runs.push(self.build_run(
-                        text,
-                        run_start,
-                        end,
-                        script_for_run,
-                        language,
-                        slice.direction,
-                    ));
-                }
-                run_start = end;
-                current_script = None;
-            }
-        }
-
-        if run_start < slice.end {
-            let script_for_run =
-                current_script.unwrap_or_else(|| self.detect_script(&text[run_start..slice.end]));
-            runs.push(self.build_run(
-                text,
-                run_start,
-                slice.end,
-                script_for_run,
-                language,
-                slice.direction,
-            ));
-        }
-    }
-
-    fn detect_script(&self, fragment: &str) -> Script {
-        for ch in fragment.chars() {
-            let script = self.script_map.get(ch);
-            if self.is_significant_script(script) {
-                return script;
-            }
-        }
-        Script::Common
-    }
-
-    fn build_run(
-        &self,
-        text: &str,
-        start: usize,
-        end: usize,
-        script: Script,
-        language: &str,
-        direction: Direction,
-    ) -> TextRun {
-        TextRun {
-            text: text[start..end].to_string(),
-            range: (start, end),
-            script: self.script_label(script),
-            language: language.to_string(),
-            direction,
-            font: None,
-        }
-    }
-
-    fn script_label(&self, script: Script) -> String {
-        self.script_name_mapper
-            .get(script)
-            .unwrap_or("Unknown")
-            .to_string()
-    }
-
-    fn is_significant_script(&self, script: Script) -> bool {
-        !matches!(script, Script::Common | Script::Inherited | Script::Unknown)
-    }
-
-    fn hit_boundary(boundaries: &[usize], cursor: &mut usize, position: usize) -> bool {
-        while *cursor < boundaries.len() && boundaries[*cursor] < position {
-            *cursor += 1;
-        }
-
-        if *cursor < boundaries.len() && boundaries[*cursor] == position {
-            *cursor += 1;
-            return true;
-        }
-
-        false
-    }
-
     fn load_font_data(&self, font: &Font) -> Result<Arc<Vec<u8>>> {
         // Check cache first
         {
@@ -419,70 +197,7 @@ impl HarfBuzzBackend {
 
 impl Backend for HarfBuzzBackend {
     fn segment(&self, text: &str, options: &SegmentOptions) -> Result<Vec<TextRun>> {
-        if text.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let grapheme_boundaries: Vec<usize> = GraphemeClusterSegmenter::new()
-            .segment_str(text)
-            .collect();
-        if grapheme_boundaries.len() < 2 {
-            return Ok(vec![TextRun {
-                text: text.to_string(),
-                range: (0, text.len()),
-                script: "Common".to_string(),
-                language: options.language.clone().unwrap_or_else(|| "en".to_string()),
-                direction: Direction::LeftToRight,
-                font: None,
-            }]);
-        }
-
-        let cluster_spans: Vec<(usize, usize)> = grapheme_boundaries
-            .windows(2)
-            .map(|pair| (pair[0], pair[1]))
-            .collect();
-
-        let line_breaks: Vec<usize> = LineSegmenter::new_auto().segment_str(text).collect();
-        let word_breaks: Vec<usize> = if options.font_fallback {
-            WordSegmenter::new_auto().segment_str(text).collect()
-        } else {
-            Vec::new()
-        };
-
-        let language = options.language.clone().unwrap_or_else(|| "en".to_string());
-
-        let slices = self.compute_bidi_slices(text, options.bidi_resolve);
-        let mut runs = Vec::with_capacity(slices.len());
-
-        for slice in slices {
-            self.collect_runs_in_slice(
-                text,
-                slice,
-                &cluster_spans,
-                &line_breaks,
-                if options.font_fallback {
-                    Some(&word_breaks)
-                } else {
-                    None
-                },
-                options,
-                &language,
-                &mut runs,
-            );
-        }
-
-        if runs.is_empty() {
-            runs.push(self.build_run(
-                text,
-                0,
-                text.len(),
-                Script::Common,
-                &language,
-                Direction::LeftToRight,
-            ));
-        }
-
-        Ok(runs)
+        self.segmenter.segment(text, options)
     }
 
     fn shape(&self, run: &TextRun, font: &Font) -> Result<ShapingResult> {
@@ -539,6 +254,7 @@ impl Backend for HarfBuzzBackend {
         let bbox = o4e_core::utils::calculate_bbox(&glyphs);
 
         Ok(ShapingResult {
+            text: run.text.clone(),
             glyphs,
             advance: x_pos,
             bbox,

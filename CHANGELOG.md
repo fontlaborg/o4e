@@ -12,8 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Regression tests for the CoreText backend covering Latin, Arabic (RTL), and CJK segmentation to lock in script metadata expectations.
+- CoreText rendering regression tests that draw Latin (Helvetica), Arabic (Geeza Pro), and CJK (PingFang SC) samples to ensure macOS output reflects the requested strings.
+- SVG renderer fallbacks that emit rectangles when glyph paths are unavailable along with tests for simple/complex layouts and structural validity.
+- Batch renderer progress reporting plus stress tests for 100/1k/10k item batches to validate Rayon fan-out without real font dependencies.
+- ICU-driven segmentation in the HarfBuzz backend, covering grapheme clustering, hard line break detection, word boundary hints, script itemization, and bidi resolution.
+- Targeted unit tests covering mixed-script strings, bidi text, newline handling, and font fallback word boundaries.
+- Shared `o4e-unicode::TextSegmenter` crate so all backends can reuse the ICU/bidi segmentation logic with its own regression tests.
+
+### Added
 - PyO3 bindings now expose `Glyph`/`ShapingResult` classes and fully implement the `render`, `shape`, and `render_batch` methods so the Python API can exercise the Rust backend.
 - Python `TextRenderer.render_batch` now normalizes `Font` instances before calling the native batch renderer and has a dedicated unit test for the parallel path.
+
+### Changed
+- `ShapingResult` now stores the original run text (propagated through batch utilities and PyO3 bindings) so renderers can faithfully replay shaped strings.
+- CoreText rendering consumes the shaped string instead of a hard-coded placeholder, guaranteeing that exported bitmaps/PNGs carry the requested text.
 
 ### Fixed
 - `pyproject.toml` now points maturin to `python/Cargo.toml`, enables the HarfBuzz feature set, and configures `pytest`/`hatch` so editable installs succeed.
@@ -73,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Breaking:** Updated all import paths from `..constants` to `.constants` in renderer modules
+- CoreText and HarfBuzz backends now call the shared Unicode segmenter instead of carrying bespoke implementations, reducing drift between platforms.
 - Updated project metadata in Cargo.toml to reference "o4e Team" and "o4e (open font renderer)"
 - Updated project metadata in pyproject.toml with o4e branding
 - Changed repository URLs from `fontsimi/haforu` to `fontlaborg/o4e`

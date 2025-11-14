@@ -873,14 +873,12 @@ dependencies = [
  "anyhow",
  "env_logger",
  "harfbuzz_rs",
- "icu_locid",
- "icu_properties",
- "icu_segmenter",
  "kurbo",
  "log",
  "lru",
  "o4e-core",
  "o4e-render",
+ "o4e-unicode",
  "owned_ttf_parser",
  "parking_lot",
  "png",
@@ -889,7 +887,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tiny-skia",
  "ttf-parser 0.24.1",
- "unicode-bidi",
  "usvg",
 ]
 
@@ -906,6 +903,7 @@ dependencies = [
  "lru",
  "o4e-core",
  "o4e-render",
+ "o4e-unicode",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -957,7 +955,10 @@ dependencies = [
 name = "o4e-unicode"
 version = "0.1.0"
 dependencies = [
+ "icu_properties",
+ "icu_segmenter",
  "o4e-core",
+ "unicode-bidi",
 ]
 
 [[package]]

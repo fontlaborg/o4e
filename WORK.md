@@ -330,11 +330,46 @@ Foundation phase is **100% complete**. The project has a solid architectural bas
 
 Ready to proceed with platform-specific backend implementations.
 
+## Work Log (2024-11-14)
+
+- Implemented ICU-powered segmentation in `o4e-icu-hb`: grapheme clustering, word boundary awareness for font fallback, newline-based hard line breaks, script itemization, and bidi resolution via `unicode-bidi`.
+- Added regression tests validating mixed-script + bidi segmentation, newline splits, and font-fallback word chunking; improved default segmentation test expectations.
+- Tests:
+  - `cargo test` ✅ (warnings remain in other crates, see console for details).
+  - `uvx hatch test` ⚠️ (fails because no Python tests are collected yet; pytest exits with status 5).
+
 ## 2024-11-13 - PyO3 Binding Enablement
 
 - Hooked the PyO3 bindings into the Python API by exporting `Glyph`/`ShapingResult` classes and wiring up `render`, `shape`, and `render_batch` so the high-level helpers no longer depend on mocks.
 - Updated `pyproject.toml` to point maturin at `python/Cargo.toml`, enable the HarfBuzz feature set, and configure `pytest`/`hatch` metadata; `uvx hatch test` still reports zero tests, so Python verification runs via `python3 -m pytest python/tests -vv`.
 - Cleaned up the renderer infrastructure (added the missing `parking_lot` dependency, fixed buffer pool ownership issues, and guarded the SIMD conversion test with `unsafe`), allowing `cargo test` to succeed throughout the workspace (warnings remain about unused cfgs/imports in placeholder crates).
 - Tests:
-  - `python3 -m pytest python/tests -vv` (pass, 37 tests).
-  - `cargo test` (pass; multiple crates emit warnings about cfg hints and unused imports that remain TODOs).
+- `python3 -m pytest python/tests -vv` (pass, 37 tests).
+- `cargo test` (pass; multiple crates emit warnings about cfg hints and unused imports that remain TODOs).
+
+## Work Log (2024-11-15)
+
+- Added the shared `o4e-unicode::TextSegmenter`, porting the ICU + bidi segmentation logic into a reusable crate with unit tests that cover Latin, Arabic, newline, word, and mixed-script cases.
+- Refactored the HarfBuzz backend to delegate segmentation to the shared module, simplifying the struct and removing the redundant ICU dependency wiring.
+- Updated the CoreText backend to use the shared segmenter so macOS now benefits from script itemization and bidi-aware runs without needing CFStringTokenizer bindings.
+- Tests:
+  - `cargo test` ✅ (warnings unchanged; see console excerpt above for existing todos).
+  - `uvx hatch test` ⚠️ (still reports “collected 0 items” because the Python suite has not been populated yet).
+
+## Work Log (2024-11-16)
+
+- Extended the CoreText backend test coverage with Latin, Arabic (RTL), and mixed CJK segmentation cases to satisfy the outstanding regression scenarios in TODO.
+- Hardened the SVG renderer by adding fallback rectangles when glyph paths are unavailable and wrote new unit tests for simple text, complex positioning, and structural validity.
+- Added progress-aware batch rendering plus stress tests for batches of 100, 1k, and 10k items using a deterministic dummy backend to exercise the Rayon worker paths without real font dependencies.
+- Tests:
+  - `cargo test` ✅
+  - `uvx hatch test` ⚠️ (fails with “collected 0 items” because no Python tests exist yet; unchanged from previous runs)
+
+## Work Log (2024-11-16)
+
+- Pushed the original run text through every `ShapingResult`, updated combiners/batch utilities, and extended the Python binding shim so render paths can faithfully recreate the shaped string across Rust and PyO3 entry points.
+- Reworked the CoreText backend render path to reuse the shaped string instead of the previous "Hello World" placeholder, ensuring PNG/raw outputs now reflect the requested content.
+- Added macOS-only regression tests that render Latin (`Helvetica`), Arabic (`Geeza Pro`), and CJK (`PingFang SC`) passages to satisfy the unchecked PLAN/TODO items and to catch regressions in CoreText text replay.
+- Tests:
+  - `cargo test` ✅ (warnings unchanged: existing cfg/unused-field notices in `o4e-core`, `o4e-pure`, `o4e-render`, and the deprecated `ttf_parser::Face::from_slice` call remain to be tackled separately).
+  - `uvx hatch test` ⚠️ (still exits 5 with "collected 0 items" until we populate the Python test suite that Hatch looks for).

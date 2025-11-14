@@ -206,6 +206,11 @@ impl Backend for CoreTextBackend {
 }
 ```
 
+#### Verification
+- [x] Render Latin sample text via CoreText (`Helvetica`) to confirm glyph replay and bitmap output.
+- [x] Render Arabic sample (`Geeza Pro`) with bidi enabled to verify RTL runs render without panics.
+- [x] Render CJK sample (`PingFang SC`) to ensure Han scripts survive the CoreText pipeline.
+
 ### Day 5: Python Bindings Foundation
 
 #### Step 7: PyO3 Setup (python/src/lib.rs)
@@ -514,6 +519,13 @@ impl FontCache {
     }
 }
 ```
+
+## Week 3 Bonus: Unicode Infrastructure
+
+- [x] Extract ICU-driven segmentation into a reusable `o4e-unicode` crate with its own test suite
+- [x] Replace the bespoke HarfBuzz backend segmenter with the shared implementation
+- [x] Adopt the shared segmenter inside the CoreText backend to unlock script itemization and bidi resolution
+- [ ] Wire the DirectWrite backend to the shared segmenter for parity
 
 ## Week 4: Production Ready
 

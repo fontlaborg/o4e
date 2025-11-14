@@ -210,6 +210,7 @@ impl Backend for DirectWriteBackend {
             let bbox = o4e_core::utils::calculate_bbox(&glyphs);
 
             let result = ShapingResult {
+                text: run.text.clone(),
                 glyphs,
                 advance: metrics.width,
                 bbox,

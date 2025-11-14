@@ -199,6 +199,7 @@ impl Backend for PureRustBackend {
         };
 
         Ok(ShapingResult {
+            text: run.text.clone(),
             glyphs,
             advance: x_offset,
             bbox,

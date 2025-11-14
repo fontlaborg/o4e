@@ -5,7 +5,10 @@
 use o4e_core::{Backend, Font, RenderOptions, RenderOutput, Result, SegmentOptions, ShapingResult};
 use rayon::iter::IndexedParallelIterator;
 use rayon::prelude::*;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 /// Item to be rendered in batch.
 #[derive(Clone)]
@@ -41,14 +44,19 @@ impl BatchRenderer {
 
     /// Render a batch of items in parallel.
     pub fn render_batch(&self, items: Vec<BatchItem>) -> Vec<BatchResult> {
-        items
-            .into_par_iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let result = self.render_single(&item);
-                BatchResult { index, result }
-            })
-            .collect()
+        self.render_batch_internal(items, None)
+    }
+
+    /// Render a batch of items while reporting progress.
+    pub fn render_batch_with_progress<F>(
+        &self,
+        items: Vec<BatchItem>,
+        progress: F,
+    ) -> Vec<BatchResult>
+    where
+        F: Fn(usize, usize) + Send + Sync + 'static,
+    {
+        self.render_batch_internal(items, Some(Arc::new(progress)))
     }
 
     /// Render a batch with a specific number of threads.
@@ -62,7 +70,25 @@ impl BatchRenderer {
             .build()
             .unwrap();
 
-        pool.install(|| self.render_batch(items))
+        pool.install(|| self.render_batch_internal(items, None))
+    }
+
+    /// Render a batch with a specific number of threads and progress reporting.
+    pub fn render_batch_with_threads_and_progress<F>(
+        &self,
+        items: Vec<BatchItem>,
+        num_threads: usize,
+        progress: F,
+    ) -> Vec<BatchResult>
+    where
+        F: Fn(usize, usize) + Send + Sync + 'static,
+    {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap();
+
+        pool.install(|| self.render_batch_internal(items, Some(Arc::new(progress))))
     }
 
     /// Render a single item.
@@ -97,12 +123,52 @@ impl BatchRenderer {
             BatchResult { index, result }
         })
     }
+
+    fn render_batch_internal(
+        &self,
+        items: Vec<BatchItem>,
+        progress: Option<Arc<dyn Fn(usize, usize) + Send + Sync>>,
+    ) -> Vec<BatchResult> {
+        if items.is_empty() {
+            return Vec::new();
+        }
+
+        let total = items.len();
+        let state = progress.map(|callback| {
+            Arc::new(ProgressState {
+                callback,
+                counter: Arc::new(AtomicUsize::new(0)),
+            })
+        });
+
+        items
+            .into_par_iter()
+            .enumerate()
+            .map({
+                let state = state.clone();
+                move |(index, item)| {
+                    let result = self.render_single(&item);
+                    if let Some(state) = state.as_ref() {
+                        let current = state.counter.fetch_add(1, Ordering::SeqCst) + 1;
+                        (state.callback)(current, total);
+                    }
+                    BatchResult { index, result }
+                }
+            })
+            .collect()
+    }
+}
+
+struct ProgressState {
+    callback: Arc<dyn Fn(usize, usize) + Send + Sync>,
+    counter: Arc<AtomicUsize>,
 }
 
 /// Combine multiple shaped results into one.
 fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
     if results.is_empty() {
         return ShapingResult {
+            text: String::new(),
             glyphs: vec![],
             advance: 0.0,
             bbox: o4e_core::types::BoundingBox {
@@ -122,8 +188,12 @@ fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
     let mut all_glyphs = Vec::new();
     let mut total_advance = 0.0;
     let mut x_offset = 0.0;
+    let mut combined_text = String::new();
 
     for result in results {
+        if !result.text.is_empty() {
+            combined_text.push_str(&result.text);
+        }
         // Offset glyphs by accumulated advance
         for mut glyph in result.glyphs {
             glyph.x += x_offset;
@@ -136,6 +206,7 @@ fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
     let bbox = o4e_core::utils::calculate_bbox(&all_glyphs);
 
     ShapingResult {
+        text: combined_text,
         glyphs: all_glyphs,
         advance: total_advance,
         bbox,
@@ -146,17 +217,96 @@ fn combine_shaped_results(results: Vec<ShapingResult>) -> ShapingResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use o4e_core::{
+        types::{BoundingBox, Direction, Glyph, TextRun},
+        Result,
+    };
+
+    #[derive(Default)]
+    struct DummyBackend;
+
+    impl Backend for DummyBackend {
+        fn segment(&self, text: &str, _options: &SegmentOptions) -> Result<Vec<TextRun>> {
+            Ok(vec![TextRun {
+                text: text.to_string(),
+                range: (0, text.len()),
+                script: "Latin".to_string(),
+                language: "en".to_string(),
+                direction: Direction::LeftToRight,
+                font: None,
+            }])
+        }
+
+        fn shape(&self, run: &TextRun, font: &Font) -> Result<ShapingResult> {
+            let glyphs: Vec<Glyph> = run
+                .text
+                .char_indices()
+                .map(|(idx, _)| Glyph {
+                    id: idx as u32,
+                    cluster: idx as u32,
+                    x: idx as f32,
+                    y: 0.0,
+                    advance: 1.0,
+                })
+                .collect();
+
+            let bbox = if glyphs.is_empty() {
+                BoundingBox {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                }
+            } else {
+                o4e_core::utils::calculate_bbox(&glyphs)
+            };
+
+            Ok(ShapingResult {
+                text: run.text.clone(),
+                advance: glyphs.len() as f32,
+                glyphs,
+                bbox,
+                font: Some(font.clone()),
+            })
+        }
+
+        fn render(&self, shaped: &ShapingResult, _options: &RenderOptions) -> Result<RenderOutput> {
+            Ok(RenderOutput::Raw(vec![0; shaped.glyphs.len().max(1)]))
+        }
+
+        fn name(&self) -> &str {
+            "dummy"
+        }
+
+        fn clear_cache(&self) {}
+    }
+
+    fn make_items(count: usize) -> Vec<BatchItem> {
+        let font = Font::new("Test", 12.0);
+        let render_options = RenderOptions::default();
+        let segment_options = SegmentOptions::default();
+        (0..count)
+            .map(|i| BatchItem {
+                text: format!("Item {}", i),
+                font: font.clone(),
+                segment_options: segment_options.clone(),
+                render_options: render_options.clone(),
+            })
+            .collect()
+    }
 
     #[test]
     fn test_combine_empty_results() {
         let combined = combine_shaped_results(vec![]);
         assert!(combined.glyphs.is_empty());
         assert_eq!(combined.advance, 0.0);
+        assert!(combined.text.is_empty());
     }
 
     #[test]
     fn test_combine_single_result() {
         let result = ShapingResult {
+            text: "abc".to_string(),
             glyphs: vec![],
             advance: 10.0,
             bbox: o4e_core::types::BoundingBox {
@@ -170,5 +320,45 @@ mod tests {
 
         let combined = combine_shaped_results(vec![result.clone()]);
         assert_eq!(combined.advance, result.advance);
+        assert_eq!(combined.text, "abc".to_string());
+    }
+
+    #[test]
+    fn test_progress_callback_receives_updates() {
+        let renderer = BatchRenderer::new(Arc::new(DummyBackend::default()));
+        let items = make_items(5);
+        let invocations = Arc::new(AtomicUsize::new(0));
+
+        renderer.render_batch_with_progress(items, {
+            let invocations = invocations.clone();
+            move |current, total| {
+                assert!(current <= total);
+                invocations.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        assert_eq!(invocations.load(Ordering::SeqCst), 5);
+    }
+
+    fn assert_large_batch(count: usize) {
+        let renderer = BatchRenderer::new(Arc::new(DummyBackend::default()));
+        let results = renderer.render_batch(make_items(count));
+        assert_eq!(results.len(), count);
+        assert!(results.iter().all(|result| result.result.is_ok()));
+    }
+
+    #[test]
+    fn test_render_batch_handles_100_items() {
+        assert_large_batch(100);
+    }
+
+    #[test]
+    fn test_render_batch_handles_1000_items() {
+        assert_large_batch(1_000);
+    }
+
+    #[test]
+    fn test_render_batch_handles_10000_items() {
+        assert_large_batch(10_000);
     }
 }

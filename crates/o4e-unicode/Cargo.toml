@@ -7,3 +7,6 @@ license.workspace = true
 
 [dependencies]
 o4e-core = { path = "../../backends/o4e-core" }
+icu_segmenter.workspace = true
+icu_properties.workspace = true
+unicode-bidi.workspace = true
