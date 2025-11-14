@@ -4,415 +4,403 @@ this_file: CLAUDE.md
 
 # Development Guidelines for o4e
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file provides guidance to Claude Code when working with the o4e multi-backend text rendering engine.
+
+IMPORTANT: When you’re working, REGULARLY remind me & yourself which folder you’re working in and what project you’re working on. 
 
 ## Project Overview
 
-**o4e** (open font renderer) is a text renderer development project that aims to provide a unified API for rendering text with fonts across multiple backend implementations (HarfBuzz + rasterizers, CoreText, DirectWrite). The project prioritizes CSS-familiar terminology with secondary support for HarfBuzz conventions.
+**o4e** (Open Font Engine) is a high-performance text rendering metapackage providing:
+- Multiple Rust backends: CoreText (macOS), DirectWrite (Windows), ICU+HarfBuzz (cross-platform)
+- Complete Unicode text processing: segmentation, bidirectional text, complex scripts
+- Multiple output formats: SVG vectors, raster bitmaps, shaping data
+- Python bindings with optional extras for each backend
 
-**Key Components:**
-- **Reference implementation (haforu)**: Rust-based high-performance batch font renderer in `reference/haforu/` with Python bindings via PyO3
-- **API design documentation**: Comprehensive specification in `README.md` defining language-agnostic interfaces
-- **Renderer prototypes**: Various rendering implementations in `reference/renderers/`
+## Critical Architecture Decisions
 
-## Development Philosophy
-
-### Chain-of-Thought First
-
-Before any implementation, apply systematic reasoning:
-- **Problem analysis**: What exactly are we solving and why?
-- **Constraints**: What limitations must we respect?
-- **Solution options**: What are 2–3 viable approaches with trade-offs?
-- **Edge cases**: What could go wrong and how do we handle it?
-- **Test strategy**: How will we verify this works correctly?
-
-### Accuracy Over Agreement
-
-- State confidence levels clearly: "I'm certain" vs "I believe" vs "This is an educated guess"
-- If confidence is below 90%, use search tools (codebase, references, web)
-- Challenge incorrect assumptions immediately
-- Facts matter more than validation
-
-### Simplicity and Verification
-
-- **Build vs buy**: Always choose well-maintained packages over custom solutions
-- **Verify, don't assume**: Test every function, every edge case
-- **Complexity kills**: Every line of custom code is technical debt
-- **Test or it doesn't exist**: Untested code is broken code
-
-## Architecture
-
-### Core Design Principles
-
-1. **Language-agnostic API**: Designed to work consistently across Python, Rust, Swift, and JavaScript
-2. **CSS-first terminology**: Prioritize CSS property names (`font-size`, `letter-spacing`) over native shaping library terms
-3. **HarfBuzz compatibility**: Secondary support for HarfBuzz concepts (features, variations, clusters)
-4. **Multiple output modes**: Support both raster images (PNG, PGM) and JSON shaping data
-
-### Haforu Architecture (reference/haforu/)
-
-**Rust Core Modules:**
-- `batch.rs`: JSONL-based batch job processing
-- `fonts.rs`: Memory-mapped font loading with LRU caching
-- `shaping.rs`: Text shaping via HarfBuzz
-- `render.rs`: Glyph rasterization using zeno
-- `output.rs`: Image generation (PGM/PNG) and base64 encoding
-- `error.rs`: Unified error handling
-- `security.rs`: Font file validation and safety checks
-- `input.rs`: Input validation and processing
-
-**Python Bindings (python/):**
-- Maturin for build/packaging
-- PyO3 for Rust-Python bridge
-- NumPy integration for array handling
-- Batch and streaming APIs exposed
-
-## Project Structure & Organization
-
-Root-level specs live in `README.md`, the canonical API contract. Reference implementations stay under `reference/`: `haforu/` hosts the Rust crate plus Python bindings (`src/` for Rust, `python/haforu/` for the wheel, `python/tests/` for fixtures), while `renderers/` contains lightweight Python prototypes for CoreText, Skia, and HarfBuzz adapters. Leave `NEXTTASK.md` untouched; it tracks upstream priorities.
-
+### Workspace Structure
 ```
-o4e/
-├── README.md              # API specifications and design docs
-├── NEXTTASK.md           # Current development focus (read-only)
-├── CLAUDE.md             # This file
-├── WORK.md               # Work progress updates
-├── CHANGELOG.md          # Past change release notes
-├── PLAN.md               # Detailed future goals
-├── TODO.md               # Flat itemized task list
-├── reference/
-│   ├── haforu/           # Reference implementation
-│   │   ├── src/          # Rust source
-│   │   ├── python/       # Python bindings
-│   │   ├── Cargo.toml    # Rust dependencies
-│   │   └── pyproject.toml # Python package config
-│   └── renderers/        # Prototype implementations
-└── .git/
+o4e/                           # Root workspace
+├── Cargo.toml                 # Workspace definition
+├── backends/
+│   ├── o4e-core/             # Shared traits and utilities
+│   ├── o4e-mac/              # CoreText backend
+│   ├── o4e-win/              # DirectWrite backend
+│   ├── o4e-icu-hb/           # ICU+HarfBuzz backend
+│   ├── o4e-pure/             # Pure Rust backend
+│   └── o4e-skia/             # Skia backend
+├── crates/
+│   ├── o4e-api/              # Public API types
+│   ├── o4e-unicode/          # Unicode segmentation
+│   ├── o4e-shaping/          # Shaping abstraction
+│   └── o4e-render/           # Rendering abstraction
+├── python/
+│   ├── src/                  # PyO3 bindings
+│   ├── o4e/                  # Python package
+│   └── tests/                # Python tests
+└── examples/                  # Working examples
 ```
 
-### File Path Tracking
+### Development Principles
 
-**Mandatory**: Every source file must maintain a `this_file` record showing the path relative to project root.
-- Place `this_file` near the top: as a comment after shebangs in code files, or in YAML frontmatter for markdown
-- Update paths when moving files
-- Omit leading `./`
+#### 1. RAPID DEVELOPMENT FIRST
+- **MVP in 2 weeks**: Focus on working code over perfect code
+- **Iterate fast**: Ship early, refine later
+- **70% reuse**: Maximize code sharing across backends
+- **No premature optimization**: Profile first, optimize second
 
-## Development Workflow
+#### 2. Backend Independence
+- Each backend is a separate crate with minimal dependencies
+- Shared functionality goes in `o4e-core`
+- Platform-specific code is isolated
+- Feature flags control compilation
 
-### Before Starting Any Work
+#### 3. Performance Targets
+- Single render: < 0.5ms for Latin, < 2ms for complex scripts
+- Batch: > 10,000 renders/second
+- Memory: < 100MB font cache
+- Startup: < 10ms first render
 
-1. Read `WORK.md` for current progress and `CHANGELOG.md` for past changes
-2. Read `README.md` to understand the project
-3. Run existing tests to understand current state
-4. Step back and think through the task step-by-step
-5. Consider alternatives and choose the best option
-6. Check for existing solutions in the codebase
+## Implementation Strategy
 
-### When Adding New Features
+### Phase 1: Core Infrastructure (Week 1)
+1. **Workspace setup**: Multi-crate Cargo workspace
+2. **Trait definitions**: Backend, Segmenter, Shaper, Renderer traits
+3. **Shared utilities**: Font loading, caching, error handling
+4. **API types**: Font, TextRun, ShapingResult, RenderOptions
 
-1. **Start with the API contract**: Update `README.md` specifications first
-2. **Search for existing packages**: Check if this has been solved before
-3. **Write tests first**: Define what success looks like
-4. **Implement in Rust core**: Add to appropriate module in `src/`
-5. **Expose to Python**: Update `src/python/mod.rs` and type stubs (`.pyi` files)
-6. **Verify thoroughly**: Run all tests, check edge cases
-7. **Update documentation**: Docstrings in Rust (`//!`) and Python
+### Phase 2: First Backend (Week 1-2)
+1. **o4e-mac**: CoreText backend for macOS
+   - Use `objc2` and `core-foundation` crates
+   - Implement traits from o4e-core
+   - Focus on correctness over optimization
+2. **Python bindings**: Basic PyO3 wrapper
+   - Simple API: `render(text, font) -> Image`
+   - Automatic backend selection
 
-### Complexity Detection Triggers
+### Phase 3: Cross-Platform (Week 2-3)
+1. **o4e-icu-hb**: ICU+HarfBuzz backend
+   - Use existing `harfbuzz_rs` bindings
+   - ICU for segmentation via `icu_segmenter`
+   - FreeType for rasterization
+2. **o4e-win**: DirectWrite backend
+   - Use `windows-rs` crate
+   - Focus on ClearType rendering
 
-**Rethink your approach immediately if you're:**
-- Writing a utility function that feels "general purpose"
-- Creating abstractions "for future flexibility"
-- Adding error handling for errors that never happen
-- Writing custom parsers, validators, or formatters
-- Implementing caching, retry logic, or state management from scratch
-- More than 3 levels of indentation
-- Functions longer than 20 lines
-- Files longer than 200 lines
+### Phase 4: Advanced Features (Week 3-4)
+1. **SVG output**: Glyph outline extraction
+2. **Batch processing**: Parallel rendering with `rayon`
+3. **Font fallback**: Automatic font selection
+4. **Performance optimization**: Profiling and tuning
 
-## Commands & Tools
+## Key Technical Patterns
 
-### Rust Development (haforu)
+### Trait-Based Architecture
+```rust
+// o4e-core/src/traits.rs
+pub trait Backend: Send + Sync {
+    fn segment(&self, text: &str) -> Vec<TextRun>;
+    fn shape(&self, run: &TextRun, font: &Font) -> ShapingResult;
+    fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> RenderOutput;
+}
 
-```bash
-# Navigate to haforu directory first
-cd reference/haforu
+pub trait TextSegmenter {
+    fn segment(&self, text: &str, options: &SegmentOptions) -> Vec<TextRun>;
+}
 
-# Build and test
-cargo build --release
-cargo test
-cargo fmt && cargo clippy --all-targets --all-features
+pub trait FontShaper {
+    fn shape(&self, text: &str, font: &Font, features: &Features) -> ShapingResult;
+}
 
-# Run the CLI tool
-cargo run --release -- [args]
-
-# Build with Python bindings
-cargo build --release --features python
+pub trait GlyphRenderer {
+    fn render_to_bitmap(&self, glyphs: &[Glyph]) -> Bitmap;
+    fn render_to_svg(&self, glyphs: &[Glyph]) -> String;
+}
 ```
 
-### Python Development (haforu Python bindings)
+### Zero-Copy Font Loading
+```rust
+// Use memory-mapped fonts for performance
+use memmap2::Mmap;
+use std::sync::Arc;
 
-```bash
-cd reference/haforu
-
-# Install in development mode
-uv tool run maturin develop
-
-# Or use maturin directly
-maturin develop --features python
-maturin build --release --features python
-
-# Run Python tests
-uvx hatch test
-pytest python/tests/ -v
-
-# Type checking
-mypy python/haforu/
+pub struct FontData {
+    mmap: Arc<Mmap>,
+    face_index: u32,
+}
 ```
 
-### Dependency Management
+### Efficient Caching
+```rust
+// LRU cache for shaped results
+use lru::LruCache;
+use std::sync::Mutex;
 
-- Use `uv` for Python workflows: `uv add [package]`
-- Use Cargo for Rust: standard `Cargo.toml` management
-- **Never call `pip` directly**; use `uv pip install` if needed
-- Keep dependencies managed via `uv add …`
+pub struct ShapeCache {
+    cache: Mutex<LruCache<ShapeCacheKey, Arc<ShapingResult>>>,
+}
+```
+
+### Platform Abstraction
+```rust
+// Conditional compilation for backends
+#[cfg(target_os = "macos")]
+pub use o4e_mac::CoreTextBackend as DefaultBackend;
+
+#[cfg(target_os = "windows")]
+pub use o4e_win::DirectWriteBackend as DefaultBackend;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub use o4e_icu_hb::HarfBuzzBackend as DefaultBackend;
+```
+
+## Python API Design
+
+### Simple by Default
+```python
+# Simplest possible API
+from o4e import render
+image = render("Hello World", font="Arial", size=48)
+```
+
+### Progressive Complexity
+```python
+# More control when needed
+from o4e import TextRenderer, Font
+
+renderer = TextRenderer(backend="coretext", cache_size=1024)
+font = Font("Inter", size=36, variations={"wght": 700})
+image = renderer.render("Text", font=font, color="#FF0000")
+```
+
+### Type Safety
+```python
+# Use type hints everywhere
+from typing import Optional, Dict, Union
+from pathlib import Path
+
+def render(
+    text: str,
+    font: Union[str, Path, Font],
+    size: Optional[float] = None,
+    **options: Dict[str, Any]
+) -> Image:
+    ...
+```
+
+## Build System
+
+### Cargo Workspace
+```toml
+# Root Cargo.toml
+[workspace]
+members = [
+    "backends/*",
+    "crates/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Font Laboratory"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Shared dependencies
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4"
+rayon = "1.10"
+lru = "0.12"
+```
+
+### Maturin Configuration
+```toml
+# pyproject.toml
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "o4e"
+version = "0.1.0"
+requires-python = ">=3.8"
+
+[project.optional-dependencies]
+mac = ["o4e[coretext]"]
+windows = ["o4e[directwrite]"]
+icu = ["o4e[harfbuzz]"]
+all = ["o4e[mac,windows,icu,skia]"]
+```
+
+### GitHub Actions
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-wheels:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release
+      - uses: actions/upload-artifact@v3
+```
 
 ## Testing Strategy
 
-### Coverage Requirements
+### Unit Tests
+- Each backend has comprehensive unit tests
+- Test Unicode edge cases: RTL, combining marks, emoji
+- Test performance: ensure targets are met
+- Test correctness: compare with reference renderers
 
-Target ≥80% coverage. Every function needs coverage.
+### Integration Tests
+- Cross-backend consistency tests
+- Python binding tests
+- Performance benchmarks
+- Visual regression tests
 
-**Rust Tests:**
-- Unit tests embedded in each module (`mod tests` blocks at bottom of .rs files)
-- Integration tests use `tempfile` and `insta` for snapshot testing
-- Run all: `cargo test`
-- Run specific: `cargo test fonts::tests`
+### Example Tests
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-**Python Tests:**
-- Located in `python/tests/`
-- Test files: `test_batch.py`, `test_streaming.py`, `test_numpy.py`, `test_errors.py`
-- Uses pytest framework
-- Run: `uvx hatch test` or `pytest python/tests/ -v`
-
-### Testing Standards
-
-- **Unit tests**: Every function gets at least one test
-- **Edge cases**: Test empty glyph sets, invalid font paths, oversized bitmaps, none, negative numbers
-- **Error cases**: Test what happens when things fail (network failures, missing files, bad permissions)
-- **Integration**: Test that components work together
-- **Test naming**: `test_function_name_when_condition_then_result`
-- **Assert messages**: Always include helpful messages in assertions
-- **Functional tests**: Maintain working examples in `reference/renderers/` that showcase realistic usage
-
-### Verification Workflow (Mandatory)
-
-1. Write the test first (define what success looks like)
-2. Implement minimal code (just enough to pass)
-3. Run the test
-4. Test edge cases
-5. Test error conditions
-6. Document test results in `WORK.md`
-
-## Coding Style & Standards
-
-### Rust
-
-- Follow Rust 2021 defaults with `rustfmt`
-- Idiomatic module names (snake_case files, UpperCamelCase types, SCREAMING_SNAKE constants)
-- Use `Utf8Path` (from `camino` crate) for cross-platform font path handling
-- Error handling: `thiserror` for error types, `anyhow` for error context
-
-### Python
-
-- 4-space indents, full type hints
-- `ruff` (line length 100)
-- Docstrings that explain "what + why"
-- PEP 8: Consistent formatting and naming
-- PEP 20: Keep code simple & explicit, prioritize readability
-- PEP 257: Write docstrings
-- Use type hints in their simplest form (list, dict, | for unions)
-- Modern code with `pathlib`
-- Prefer explicit dataclasses/Pydantic models for structured data
-
-### General Code Quality
-
-- Use constants over magic numbers
-- Write explanatory docstrings/comments that explain what and why
-- Explain where and how code is used/referred to elsewhere
-- Handle failures gracefully with retries, fallbacks, user guidance
-- Address edge cases, validate assumptions, catch errors early
-- Modularize repeated logic into concise, single-purpose functions
-- Favor flat over nested structures
-
-## Key Data Structures
-
-### RenderRequest (API Contract)
-
-The primary input structure for rendering operations:
-
-```typescript
-{
-  text: string,                    // UTF-8 text to render
-  font_input: FontInput,           // Font source specification
-  text_style: TextStyle,           // Size, features, variations
-  shaping?: ShapingOptions,        // Direction, script, language
-  layout?: LayoutOptions,          // Canvas, alignment, cropping
-  rendering?: RenderingOptions,    // Colors, antialiasing
-  output: OutputOptions            // Format: image or JSON
-}
-```
-
-### Haforu Job Spec (JSONL Batch Format)
-
-```json
-{
-  "text": "Hello",
-  "font": "path/to/font.ttf",
-  "size": 100.0,
-  "coords": {"wght": 600.0},       // Variable font axes
-  "canvas_width": 3000,
-  "canvas_height": 1200,
-  "baseline_y": 0.0
-}
-```
-
-### Shaping Output (hb-shape compatible)
-
-```json
-{
-  "glyphs": [
-    {
-      "g": 42,                      // Glyph ID or name
-      "cl": 0,                      // Cluster index
-      "ax": 500,                    // X advance
-      "ay": 0,                      // Y advance
-      "dx": 0,                      // X offset
-      "dy": 0,                      // Y offset
-      "extents": {                  // Optional
-        "x_bearing": 10,
-        "y_bearing": -50,
-        "width": 480,
-        "height": 600
-      }
+    #[test]
+    fn test_latin_render() {
+        let backend = DefaultBackend::new();
+        let result = backend.render("Hello", &font, &options);
+        assert!(result.width > 0);
+        assert!(result.height > 0);
     }
-  ]
+
+    #[test]
+    fn test_arabic_shaping() {
+        let backend = DefaultBackend::new();
+        let shaped = backend.shape("مرحبا", &font);
+        assert_eq!(shaped.glyphs.len(), 5);
+    }
+
+    #[test]
+    fn test_performance() {
+        let start = Instant::now();
+        for _ in 0..1000 {
+            backend.render("Test", &font, &options);
+        }
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
 }
 ```
 
-## Important Design Patterns
+## Common Commands
 
-### Memory-Mapped Font Loading
-
-Haforu uses `memmap2` for zero-copy font loading with an LRU cache (size: 512). Font instances are keyed by `(path, variation_coordinates)` to avoid redundant loading.
-
-### Batch Processing
-
-JSONL format allows processing multiple rendering jobs in a single invocation:
-- One JSON object per line in input
-- Output is JSONL with base64-encoded images or shaping data
-- Enables parallel processing via `rayon`
-
-### Error Handling
-
-- Rust: Uses `thiserror` for error types, `anyhow` for error context
-- Python: Maps Rust errors to Python exceptions via PyO3
-- All errors include context about what failed (font path, text, etc.)
-
-## Common Pitfalls
-
-1. **Font path handling**: Always use `Utf8Path` (from `camino` crate) in Rust for cross-platform compatibility
-2. **Coordinate systems**: Be careful with baseline positioning - different systems use different origins
-3. **Variation axes**: Must be 4-character tags (e.g., "wght", "slnt")
-4. **Feature tags**: OpenType features are also 4-character tags
-5. **Memory limits**: Large batch jobs with many unique fonts can exhaust cache; monitor LRU size
-
-## Security & Configuration
-
-- Never commit proprietary fonts; keep local assets under an ignored `fonts/` folder
-- Validate file I/O (see `reference/haforu/src/security.rs`)
-- Store secrets in env vars and avoid hardcoded paths
-- When updating renderer adapters, confirm platform dependencies (CoreText, Skia) exist before enabling via `is_available()`
-
-## Commit & Pull Request Guidelines
-
-Git history currently only contains the bootstrap commit, so set the bar:
-- Write imperative, scoped messages (`Add haforu batch renderer bindings`)
-- PRs should describe motivation, implementation notes, tests run, and link tracking issues or `NEXTTASK` items
-- Include screenshots or sample CLI output when rendering differs visually
-- Keep diffs focused—split protocol/spec edits from code changes
-- Run `uvx hatch test` plus `cargo test` before opening a PR
-- Document results in `WORK.md`
-
-## Project Documentation to Maintain
-
-- `README.md`: Purpose and functionality (canonical API contract)
-- `CHANGELOG.md`: Past change release notes (accumulative)
-- `PLAN.md`: Detailed future goals, clear plan that discusses specifics
-- `TODO.md`: Flat simplified itemized `- []`-prefixed representation of `PLAN.md`
-- `WORK.md`: Work progress updates including test results
-- `DEPENDENCIES.md`: List of packages used and why each was chosen
-
-## Special Commands
-
-### `/test` Command
-
-Run comprehensive tests and document results:
-
-**For Rust:**
+### Development
 ```bash
-cd reference/haforu
-cargo fmt && cargo clippy --all-targets --all-features
-cargo test
+# Build all backends
+cargo build --all-features
+
+# Test specific backend
+cargo test -p o4e-mac
+
+# Build Python package
+maturin develop --features python
+
+# Run Python tests
+pytest python/tests/ -v
+
+# Benchmark performance
+cargo bench
+
+# Check code quality
+cargo clippy --all-targets --all-features
+cargo fmt --check
 ```
 
-**For Python:**
+### Release
 ```bash
-cd reference/haforu
-uvx hatch test
+# Create release tag
+git tag v0.1.0
+git push origin v0.1.0
+
+# Build wheels for PyPI
+maturin build --release
+
+# Upload to PyPI
+maturin upload
 ```
 
-Document all results in `WORK.md`.
+## Performance Optimization Checklist
 
-### `/work` Command
+1. **Memory-mapped fonts**: Never load fonts into memory
+2. **LRU caching**: Cache shaped text and rendered glyphs
+3. **Parallel processing**: Use rayon for batch operations
+4. **SIMD when available**: Use std::simd for pixel operations
+5. **Zero allocations in hot path**: Pre-allocate buffers
+6. **Profile before optimizing**: Use cargo-flamegraph
 
-1. Read `TODO.md` and `PLAN.md` files, think hard and reflect
-2. Write down immediate items in this iteration into `WORK.md`
-3. Write tests for the items first
-4. Work on these items
-5. Think, contemplate, research, reflect, refine, revise
-6. Run the `/test` command tasks
-7. Periodically remove completed items from `WORK.md`
-8. Tick off completed items from `TODO.md` and `PLAN.md`
-9. Update `WORK.md` with improvement tasks
-10. Continue to the next item
+## Security Considerations
 
-### `/report` Command
+1. **Font validation**: Validate font files before loading
+2. **Path traversal**: Sanitize all file paths
+3. **Memory limits**: Cap cache sizes and buffer allocations
+4. **Timeout handling**: Limit rendering time for complex text
+5. **Fuzzing**: Use cargo-fuzz for security testing
 
-1. Read `TODO.md` and `PLAN.md` files
-2. Analyze recent changes
-3. Run tests
-4. Document changes in `CHANGELOG.md`
-5. Remove completed items from `TODO.md` and `PLAN.md`
+## Debugging Tips
 
-## Performance Considerations
+1. **Enable logging**: `RUST_LOG=debug cargo run`
+2. **Visual debugging**: Save intermediate bitmaps
+3. **Performance profiling**: Use perf/Instruments/VTune
+4. **Memory debugging**: Use valgrind/AddressSanitizer
+5. **Cross-platform testing**: Use CI for all platforms
 
-- Haforu prioritizes throughput for batch operations
-- Font loading uses memory mapping (zero-copy)
-- Glyph rasterization uses `zeno` (fast software rasterizer)
-- Parallel processing via `rayon` for batch jobs
-- LRU cache (size: 512) for font instances
+## Code Review Checklist
 
-## Cross-Platform Notes
+Before submitting PRs:
+- [ ] Tests pass on all platforms
+- [ ] Performance targets met
+- [ ] Documentation updated
+- [ ] Examples work
+- [ ] No unsafe code without justification
+- [ ] Error messages are helpful
+- [ ] Code follows Rust idioms
 
-- **Font backends**: HarfBuzz works on all platforms; CoreText/DirectWrite are platform-specific
-- **System fonts**: Require platform-specific font resolution
-- **Image formats**: PNG requires `image` crate; PGM is text-based (simpler)
+## Rapid Development Rules
 
-## Related Documentation
+1. **Ship working code first**: Perfection comes in v2
+2. **Measure before optimizing**: Profile actual bottlenecks
+3. **Reuse existing code**: 70% of code is shared
+4. **Automate everything**: CI/CD handles releases
+5. **Document as you go**: Comments explain "why"
+6. **Test the critical path**: 80/20 rule for coverage
 
-- HarfBuzz API: https://harfbuzz.github.io/
-- CSS Fonts spec: https://www.w3.org/TR/css-fonts-4/
-- OpenType spec: https://learn.microsoft.com/en-us/typography/opentype/spec/
-- PyO3 guide: https://pyo3.rs/
-- Maturin docs: https://www.maturin.rs/
+## Getting Help
+
+- HarfBuzz docs: https://harfbuzz.github.io/
+- CoreText: https://developer.apple.com/documentation/coretext
+- DirectWrite: https://docs.microsoft.com/en-us/windows/win32/directwrite/
+- ICU: https://unicode-org.github.io/icu/
+- Skia: https://skia.org/docs/
+
+## Next Actions
+
+1. Set up Cargo workspace structure
+2. Define core traits in o4e-core
+3. Implement CoreText backend (o4e-mac)
+4. Create minimal Python bindings
+5. Add ICU+HarfBuzz backend
+6. Implement SVG output
+7. Add DirectWrite backend
+8. Optimize performance
+9. Release v0.1.0

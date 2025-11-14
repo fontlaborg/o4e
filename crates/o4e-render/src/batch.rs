@@ -2,13 +2,16 @@
 
 //! Batch rendering implementation for parallel text processing.
 
+use hdrhistogram::Histogram;
 use o4e_core::{Backend, Font, RenderOptions, RenderOutput, Result, SegmentOptions, ShapingResult};
+use parking_lot::Mutex;
 use rayon::iter::IndexedParallelIterator;
 use rayon::prelude::*;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
 };
+use std::time::{Duration, Instant};
 
 /// Item to be rendered in batch.
 #[derive(Clone)]
@@ -29,6 +32,8 @@ pub struct BatchResult {
     pub index: usize,
     /// Rendering result or error
     pub result: Result<RenderOutput>,
+    /// How long the rendering took
+    pub elapsed: Duration,
 }
 
 /// Batch renderer for parallel text rendering.
@@ -54,7 +59,7 @@ impl BatchRenderer {
         progress: F,
     ) -> Vec<BatchResult>
     where
-        F: Fn(usize, usize) + Send + Sync + 'static,
+        F: Fn(ProgressUpdate) + Send + Sync + 'static,
     {
         self.render_batch_internal(items, Some(Arc::new(progress)))
     }
@@ -81,7 +86,7 @@ impl BatchRenderer {
         progress: F,
     ) -> Vec<BatchResult>
     where
-        F: Fn(usize, usize) + Send + Sync + 'static,
+        F: Fn(ProgressUpdate) + Send + Sync + 'static,
     {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
@@ -119,25 +124,34 @@ impl BatchRenderer {
         I: IndexedParallelIterator<Item = BatchItem> + 'a,
     {
         items.enumerate().map(move |(index, item)| {
+            let start = Instant::now();
             let result = self.render_single(&item);
-            BatchResult { index, result }
+            let elapsed = start.elapsed();
+            BatchResult {
+                index,
+                result,
+                elapsed,
+            }
         })
     }
 
     fn render_batch_internal(
         &self,
         items: Vec<BatchItem>,
-        progress: Option<Arc<dyn Fn(usize, usize) + Send + Sync>>,
+        progress: Option<Arc<dyn Fn(ProgressUpdate) + Send + Sync>>,
     ) -> Vec<BatchResult> {
         if items.is_empty() {
             return Vec::new();
         }
 
         let total = items.len();
+        let metrics = Arc::new(BatchMetrics::new());
         let state = progress.map(|callback| {
             Arc::new(ProgressState {
                 callback,
                 counter: Arc::new(AtomicUsize::new(0)),
+                total,
+                metrics: metrics.clone(),
             })
         });
 
@@ -147,12 +161,19 @@ impl BatchRenderer {
             .map({
                 let state = state.clone();
                 move |(index, item)| {
+                    let start = Instant::now();
                     let result = self.render_single(&item);
+                    let elapsed = start.elapsed();
+                    metrics.record(elapsed);
                     if let Some(state) = state.as_ref() {
                         let current = state.counter.fetch_add(1, Ordering::SeqCst) + 1;
-                        (state.callback)(current, total);
+                        state.report(current);
                     }
-                    BatchResult { index, result }
+                    BatchResult {
+                        index,
+                        result,
+                        elapsed,
+                    }
                 }
             })
             .collect()
@@ -160,8 +181,75 @@ impl BatchRenderer {
 }
 
 struct ProgressState {
-    callback: Arc<dyn Fn(usize, usize) + Send + Sync>,
+    callback: Arc<dyn Fn(ProgressUpdate) + Send + Sync>,
     counter: Arc<AtomicUsize>,
+    total: usize,
+    metrics: Arc<BatchMetrics>,
+}
+
+impl ProgressState {
+    fn report(&self, completed: usize) {
+        let snapshot = self.metrics.snapshot();
+        (self.callback)(ProgressUpdate {
+            completed,
+            total: self.total,
+            p50: snapshot.p50,
+            p90: snapshot.p90,
+            p99: snapshot.p99,
+        });
+    }
+}
+
+struct BatchMetrics {
+    histogram: Mutex<Histogram<u64>>,
+}
+
+impl BatchMetrics {
+    fn new() -> Self {
+        let histogram =
+            Histogram::new_with_bounds(1, 60_000_000, 3).expect("histogram bounds should be valid"); // up to 60s per item
+        Self {
+            histogram: Mutex::new(histogram),
+        }
+    }
+
+    fn record(&self, duration: Duration) {
+        let micros = duration.as_micros().clamp(1, u64::MAX as u128) as u64;
+        let mut histogram = self.histogram.lock();
+        let _ = histogram.record(micros);
+    }
+
+    fn snapshot(&self) -> LatencySnapshot {
+        let histogram = self.histogram.lock();
+        if histogram.len() == 0 {
+            return LatencySnapshot::default();
+        }
+        LatencySnapshot {
+            p50: micros_to_duration(histogram.value_at_percentile(50.0)),
+            p90: micros_to_duration(histogram.value_at_percentile(90.0)),
+            p99: micros_to_duration(histogram.value_at_percentile(99.0)),
+        }
+    }
+}
+
+#[derive(Default)]
+struct LatencySnapshot {
+    p50: Duration,
+    p90: Duration,
+    p99: Duration,
+}
+
+fn micros_to_duration(value: u64) -> Duration {
+    Duration::from_micros(value.max(1))
+}
+
+/// Latency-aware update reported to progress callbacks.
+pub struct ProgressUpdate {
+    pub completed: usize,
+    pub total: usize,
+    pub p50: Duration,
+    pub p90: Duration,
+    pub p99: Duration,
 }
 
 /// Combine multiple shaped results into one.
@@ -223,6 +311,7 @@ mod tests {
         types::{BoundingBox, Direction, Glyph, TextRun},
         Result,
     };
+    use std::sync::atomic::Ordering;
 
     #[derive(Default)]
     struct DummyBackend;
@@ -335,9 +424,12 @@ mod tests {
 
         renderer.render_batch_with_progress(items, {
             let invocations = invocations.clone();
-            move |current, total| {
-                assert!(current <= total);
+            move |update| {
+                assert!(update.completed <= update.total);
                 invocations.fetch_add(1, Ordering::SeqCst);
+                if update.completed > 0 {
+                    assert!(update.p50 >= Duration::ZERO);
+                }
             }
         });
 
@@ -349,6 +441,9 @@ mod tests {
         let results = renderer.render_batch(make_items(count));
         assert_eq!(results.len(), count);
         assert!(results.iter().all(|result| result.result.is_ok()));
+        assert!(results
+            .iter()
+            .all(|result| result.elapsed >= Duration::ZERO));
     }
 
     #[test]
@@ -364,5 +459,30 @@ mod tests {
     #[test]
     fn test_render_batch_handles_10000_items() {
         assert_large_batch(10_000);
+    }
+
+    #[test]
+    fn test_combined_glyphs_have_monotonic_offsets() {
+        let renderer = DummyBackend::default();
+        let font = Font::new("Test", 12.0);
+        let run = TextRun {
+            text: "abc".into(),
+            range: (0, 3),
+            script: "Latn".into(),
+            language: "en".into(),
+            direction: Direction::LeftToRight,
+            font: Some(font.clone()),
+        };
+
+        let shaped = renderer.shape(&run, &font).unwrap();
+        let combined = super::combine_shaped_results(vec![shaped.clone(), shaped]);
+        let mut last_x = -f32::INFINITY;
+        for glyph in combined.glyphs {
+            assert!(
+                glyph.x >= last_x,
+                "glyph positions must be monotonic to preserve layout"
+            );
+            last_x = glyph.x;
+        }
     }
 }

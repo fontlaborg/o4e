@@ -40,7 +40,7 @@ fn bench_batch_sizes(c: &mut Criterion) {
         "Multi-backend architecture",
     ];
 
-    let batch_sizes = vec![10, 100, 1000];
+    let batch_sizes = vec![100, 1_000, 10_000];
 
     for batch_size in batch_sizes {
         let mut group = c.benchmark_group("batch_render");

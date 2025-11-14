@@ -32,7 +32,7 @@ log "Running cargo fmt"
 cargo fmt --all
 
 log "Running cargo clippy (workspace, skip benches/python bindings)"
-cargo clippy --workspace --all-features --locked --exclude o4e-python
+cargo clippy --workspace --all-features --exclude o4e-python
 
 log "Running cargo test (workspace)"
 cargo test --workspace --all-features --locked --exclude o4e-python

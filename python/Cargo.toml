@@ -11,6 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 o4e-core = { path = "../backends/o4e-core" }
+o4e-render = { path = "../crates/o4e-render" }
+o4e-unicode = { path = "../crates/o4e-unicode" }
 pyo3 = { version = "0.22", features = ["extension-module"] }
 
 # Platform-specific backends

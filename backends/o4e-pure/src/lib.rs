@@ -15,8 +15,8 @@ use core::fmt;
 
 use o4e_core::{
     types::{Direction, RenderFormat},
-    Backend, Bitmap, Font, Glyph, O4eError, RenderOptions, RenderOutput, Result, SegmentOptions,
-    ShapingResult, TextRun,
+    Backend, Bitmap, Font, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics, RenderOutput,
+    RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
 };
 
 /// Pure Rust backend using rustybuzz for shaping and tiny-skia for rendering
@@ -209,10 +209,13 @@ impl Backend for PureRustBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
+        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
         match options.format {
-            RenderFormat::Raw => {
+            RenderFormat::Raw | RenderFormat::Png => {
                 let bitmap = self.render_glyphs(shaped, options)?;
-                Ok(RenderOutput::Bitmap(bitmap))
+                let surface =
+                    RenderSurface::from_rgba(bitmap.width, bitmap.height, bitmap.data, false);
+                surface.into_render_output(options.format)
             }
             RenderFormat::Svg => {
                 // Simple SVG generation
@@ -227,12 +230,6 @@ impl Backend for PureRustBackend {
 
                 svg.push_str("</svg>");
                 Ok(RenderOutput::Svg(svg))
-            }
-            RenderFormat::Png => {
-                // For PNG, we'd need to implement PNG encoding
-                // For now, return raw bitmap
-                let bitmap = self.render_glyphs(shaped, options)?;
-                Ok(RenderOutput::Bitmap(bitmap))
             }
         }
     }

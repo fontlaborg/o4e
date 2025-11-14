@@ -6,8 +6,8 @@
 
 use o4e_core::{
     types::{AntialiasMode, Direction, RenderFormat},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
-    SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics,
+    RenderOutput, RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
 };
 
 use windows::Win32::Graphics::DirectWrite::{
@@ -888,6 +888,7 @@ impl Backend for DirectWriteBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
+        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
         // Check if we have glyphs to render
         if shaped.glyphs.is_empty() {
             return Ok(RenderOutput::Bitmap(Bitmap {
@@ -1014,6 +1015,13 @@ impl Backend for DirectWriteBackend {
                 .map_err(|e| O4eError::render(format!("DrawGlyphRun failed: {e}")))?;
             render_target.EndDraw(None, None)?;
 
+            if options.format == RenderFormat::Svg {
+                let svg_options = o4e_core::types::SvgOptions::default();
+                let renderer = o4e_render::SvgRenderer::new(&svg_options);
+                let svg = renderer.render(&shaped, &svg_options);
+                return Ok(RenderOutput::Svg(svg));
+            }
+
             let mut buffer = vec![0u8; (width * height * 4) as usize];
             let rect = WICRect {
                 X: 0,
@@ -1022,38 +1030,8 @@ impl Backend for DirectWriteBackend {
                 Height: height as i32,
             };
             bitmap.CopyPixels(&rect, width * 4, &mut buffer)?;
-            for chunk in buffer.chunks_mut(4) {
-                chunk.swap(0, 2);
-            }
-
-            match options.format {
-                RenderFormat::Raw => Ok(RenderOutput::Bitmap(Bitmap {
-                    width,
-                    height,
-                    data: buffer,
-                })),
-                RenderFormat::Png => {
-                    let mut png_data = Vec::new();
-                    {
-                        let mut encoder = png::Encoder::new(&mut png_data, width, height);
-                        encoder.set_color(png::ColorType::Rgba);
-                        encoder.set_depth(png::BitDepth::Eight);
-                        let mut writer = encoder
-                            .write_header()
-                            .map_err(|e| O4eError::render(format!("PNG encoding error: {e}")))?;
-                        writer
-                            .write_image_data(&buffer)
-                            .map_err(|e| O4eError::render(format!("PNG write error: {e}")))?;
-                    }
-                    Ok(RenderOutput::Png(png_data))
-                }
-                RenderFormat::Svg => {
-                    let svg_options = o4e_core::types::SvgOptions::default();
-                    let renderer = o4e_render::SvgRenderer::new(&svg_options);
-                    let svg = renderer.render(shaped, &svg_options);
-                    Ok(RenderOutput::Svg(svg))
-                }
-            }
+            let surface = RenderSurface::from_bgra(width, height, buffer, true);
+            surface.into_render_output(options.format)
         }
     }
 

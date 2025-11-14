@@ -19,7 +19,7 @@ lru.workspace = true
 camino.workspace = true
 
 # Image encoding
-png = "0.17"
+png.workspace = true
 
 # macOS-specific dependencies
 objc2 = "0.5"

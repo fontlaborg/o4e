@@ -6,6 +6,8 @@ this_file: CLAUDE.md
 
 This file provides guidance to Claude Code when working with the o4e multi-backend text rendering engine.
 
+IMPORTANT: When you’re working, REGULARLY remind me & yourself which folder you’re working in and what project you’re working on. 
+
 ## Project Overview
 
 **o4e** (Open Font Engine) is a high-performance text rendering metapackage providing:

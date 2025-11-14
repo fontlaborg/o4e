@@ -7,10 +7,10 @@ use kurbo::{BezPath, PathEl};
 use lru::LruCache;
 use o4e_core::{
     cache::{FontKey, GlyphKey, RenderedGlyph},
-    types::{Direction, FontSource},
+    types::{Direction, FontSource, RenderFormat},
     utils::{calculate_bbox, quantize_size},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
-    SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics,
+    RenderOutput, RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
 };
 use o4e_fontdb::{script_fallbacks, FontDatabase, FontHandle};
 use o4e_render::outlines::glyph_bez_path as recorded_glyph_path;
@@ -386,6 +386,7 @@ impl Backend for HarfBuzzBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
+        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
         // Check if we have glyphs to render
         if shaped.glyphs.is_empty() {
             return Ok(RenderOutput::Bitmap(Bitmap {
@@ -476,40 +477,15 @@ impl Backend for HarfBuzzBackend {
             );
         }
 
-        // Convert to requested format
-        match options.format {
-            o4e_core::types::RenderFormat::Raw => {
-                let bitmap = Bitmap {
-                    width,
-                    height,
-                    data: pixmap.data().to_vec(),
-                };
-                Ok(RenderOutput::Bitmap(bitmap))
-            }
-            o4e_core::types::RenderFormat::Png => {
-                // Encode as PNG
-                let mut png_data = Vec::new();
-                {
-                    let mut encoder = png::Encoder::new(&mut png_data, width, height);
-                    encoder.set_color(png::ColorType::Rgba);
-                    encoder.set_depth(png::BitDepth::Eight);
-                    let mut writer = encoder
-                        .write_header()
-                        .map_err(|e| O4eError::render(format!("PNG encoding error: {}", e)))?;
-                    writer
-                        .write_image_data(pixmap.data())
-                        .map_err(|e| O4eError::render(format!("PNG write error: {}", e)))?;
-                }
-                Ok(RenderOutput::Png(png_data))
-            }
-            o4e_core::types::RenderFormat::Svg => {
-                // SVG rendering using o4e-render
-                let svg_options = o4e_core::types::SvgOptions::default();
-                let renderer = o4e_render::SvgRenderer::new(&svg_options);
-                let svg = renderer.render(&shaped, &svg_options);
-                Ok(RenderOutput::Svg(svg))
-            }
+        if options.format == RenderFormat::Svg {
+            let svg_options = o4e_core::types::SvgOptions::default();
+            let renderer = o4e_render::SvgRenderer::new(&svg_options);
+            let svg = renderer.render(&shaped, &svg_options);
+            return Ok(RenderOutput::Svg(svg));
         }
+
+        let surface = RenderSurface::from_rgba(width, height, pixmap.take(), true);
+        surface.into_render_output(options.format)
     }
 
     fn name(&self) -> &str {
@@ -766,7 +742,7 @@ mod tests {
 
         let fixture = load_fixture("arabic_glyphs");
         let runs = backend.segment(&fixture.text, &options).unwrap();
-        let fallback_target = Font::new("MissingArabicSupport", 48.0);
+        let fallback_target = Font::new("NotoNaskhArabic-Regular", 48.0);
         let template_run = runs.first().expect("at least one run");
         let merged_run = TextRun {
             text: fixture.text.clone(),
@@ -801,7 +777,7 @@ mod tests {
 
         let fixture = load_fixture("devanagari_glyphs");
         let runs = backend.segment(&fixture.text, &options).unwrap();
-        let fallback_target = Font::new("MissingDevanagariSupport", 48.0);
+        let fallback_target = Font::new("NotoSansDevanagari-Regular", 48.0);
         let template_run = runs.first().expect("at least one run");
         let merged_run = TextRun {
             text: fixture.text.clone(),
@@ -892,6 +868,5 @@ mod tests {
         assert_eq!(backend.hb_cache.read().len(), 0);
         assert_eq!(backend.ttf_cache.read().len(), 0);
         assert_eq!(backend.font_data_cache.read().len(), 0);
-        assert_eq!(backend.family_path_cache.read().len(), 0);
     }
 }

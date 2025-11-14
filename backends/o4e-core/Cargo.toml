@@ -17,3 +17,4 @@ lru.workspace = true
 parking_lot.workspace = true
 dashmap.workspace = true
 memmap2.workspace = true
+png.workspace = true

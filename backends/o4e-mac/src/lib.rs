@@ -33,8 +33,8 @@ use core_text::{
 use lru::LruCache;
 use o4e_core::{
     types::{AntialiasMode, FontSource, FontStyle, RenderFormat},
-    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOutput, Result,
-    SegmentOptions, ShapingResult, TextRun,
+    Backend, Bitmap, Font, FontCache, Glyph, O4eError, RenderOptions, RenderOptionsDiagnostics,
+    RenderOutput, RenderSurface, Result, SegmentOptions, ShapingResult, TextRun,
 };
 use o4e_fontdb::FontDatabase;
 use o4e_unicode::TextSegmenter;
@@ -140,10 +140,7 @@ impl CoreTextBackend {
                 });
                 let provider = CGDataProvider::from_buffer(provider_data);
                 let cg_font = CGFont::from_data_provider(provider).map_err(|_| {
-                    O4eError::render(format!(
-                        "Failed to create CGFont from '{}'",
-                        handle.family
-                    ))
+                    O4eError::render(format!("Failed to create CGFont from '{}'", handle.family))
                 })?;
                 Ok(Some(font::new_from_CGFont(&cg_font, font.size as f64)))
             }
@@ -474,6 +471,7 @@ impl Backend for CoreTextBackend {
     }
 
     fn render(&self, shaped: &ShapingResult, options: &RenderOptions) -> Result<RenderOutput> {
+        RenderOptionsDiagnostics::new(self.name(), shaped, options).log();
         // Check if we have glyphs to render
         if shaped.glyphs.is_empty() {
             return Ok(RenderOutput::Bitmap(Bitmap {
@@ -571,40 +569,15 @@ impl Backend for CoreTextBackend {
         ct_font.draw_glyphs(&glyph_ids, &glyph_positions, context.clone());
         context.restore();
 
-        // Convert to requested format
-        match options.format {
-            RenderFormat::Raw => {
-                let bitmap = Bitmap {
-                    width: width as u32,
-                    height: height as u32,
-                    data: buffer,
-                };
-                Ok(RenderOutput::Bitmap(bitmap))
-            }
-            RenderFormat::Png => {
-                // Encode as PNG
-                let mut png_data = Vec::new();
-                {
-                    let mut encoder = png::Encoder::new(&mut png_data, width as u32, height as u32);
-                    encoder.set_color(png::ColorType::Rgba);
-                    encoder.set_depth(png::BitDepth::Eight);
-                    let mut writer = encoder
-                        .write_header()
-                        .map_err(|e| O4eError::render(format!("PNG encoding error: {}", e)))?;
-                    writer
-                        .write_image_data(&buffer)
-                        .map_err(|e| O4eError::render(format!("PNG write error: {}", e)))?;
-                }
-                Ok(RenderOutput::Png(png_data))
-            }
-            RenderFormat::Svg => {
-                // SVG rendering using o4e-render
-                let svg_options = o4e_core::types::SvgOptions::default();
-                let renderer = o4e_render::SvgRenderer::new(&svg_options);
-                let svg = renderer.render(&shaped, &svg_options);
-                Ok(RenderOutput::Svg(svg))
-            }
+        if options.format == RenderFormat::Svg {
+            let svg_options = o4e_core::types::SvgOptions::default();
+            let renderer = o4e_render::SvgRenderer::new(&svg_options);
+            let svg = renderer.render(&shaped, &svg_options);
+            return Ok(RenderOutput::Svg(svg));
         }
+
+        let surface = RenderSurface::from_rgba(width as u32, height as u32, buffer, true);
+        surface.into_render_output(options.format)
     }
 
     fn name(&self) -> &str {

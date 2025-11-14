@@ -66,7 +66,11 @@ harfbuzz_rs = "2.0"
 icu_segmenter = { version = "1.5", features = ["compiled_data", "auto"] }
 icu_locid = "1.5"
 icu_properties = { version = "1.5", features = ["compiled_data"] }
-ttf-parser = "0.24"
+ttf-parser = "0.25"
+owned_ttf_parser = "0.25"
+png = "0.17"
+lyon_geom = "1.0"
+hdrhistogram = "7"
 unicode-bidi = "0.3"
 
 # Python bindings

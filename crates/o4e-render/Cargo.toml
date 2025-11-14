@@ -14,12 +14,14 @@ anyhow.workspace = true
 log.workspace = true
 rayon.workspace = true
 parking_lot.workspace = true
+hdrhistogram.workspace = true
 
 # For SVG generation
 svgtypes = "0.15"
 kurbo = "0.11"
 
 # For path simplification (optional - we'll implement our own simple version)
-ttf-parser = "0.24"
-owned_ttf_parser = "0.24"
+ttf-parser.workspace = true
+owned_ttf_parser.workspace = true
 shellexpand = "3"
+lyon_geom.workspace = true

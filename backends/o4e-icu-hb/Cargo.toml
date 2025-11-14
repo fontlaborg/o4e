@@ -21,12 +21,12 @@ lru.workspace = true
 harfbuzz_rs = "2.0"
 
 # Font handling
-ttf-parser = "0.24"
-owned_ttf_parser = "0.24"
+ttf-parser.workspace = true
+owned_ttf_parser.workspace = true
 
 # Rendering
 tiny-skia = "0.11"
-png = "0.17"
+png.workspace = true
 resvg = "0.42"
 usvg = "0.42"
 kurbo = "0.11"
