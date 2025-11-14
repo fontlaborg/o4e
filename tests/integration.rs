@@ -49,7 +49,12 @@ fn test_backend_initialization() {
 #[test]
 fn test_simple_latin_text() {
     let backends = get_available_backends();
-    let font = Font::new("Arial", 24.0);
+    // Use Helvetica on macOS, otherwise try common fonts
+    #[cfg(target_os = "macos")]
+    let font = Font::new("Helvetica", 24.0);
+    #[cfg(not(target_os = "macos"))]
+    let font = Font::new("DejaVu Sans", 24.0);
+
     let text = "Hello World";
     let segment_options = SegmentOptions::default();
     let render_options = RenderOptions::default();
@@ -129,6 +134,11 @@ fn test_font_sizes() {
     let segment_options = SegmentOptions::default();
     let sizes = vec![8.0, 12.0, 16.0, 24.0, 36.0, 48.0, 72.0, 144.0];
 
+    #[cfg(target_os = "macos")]
+    let font_name = "Helvetica";
+    #[cfg(not(target_os = "macos"))]
+    let font_name = "DejaVu Sans";
+
     for backend in backends {
         println!("Testing font sizes with backend: {}", backend.name());
 
@@ -138,7 +148,7 @@ fn test_font_sizes() {
         let mut previous_advance = 0.0;
 
         for size in &sizes {
-            let font = Font::new("Arial", *size);
+            let font = Font::new(font_name, *size);
             let shaped = backend.shape(run, &font).unwrap();
 
             // Larger font sizes should generally have larger advances
@@ -159,7 +169,11 @@ fn test_font_sizes() {
 #[test]
 fn test_empty_text() {
     let backends = get_available_backends();
-    let font = Font::new("Arial", 24.0);
+    #[cfg(target_os = "macos")]
+    let font = Font::new("Helvetica", 24.0);
+    #[cfg(not(target_os = "macos"))]
+    let font = Font::new("DejaVu Sans", 24.0);
+
     let segment_options = SegmentOptions::default();
     let render_options = RenderOptions::default();
 
@@ -190,7 +204,11 @@ fn test_empty_text() {
 #[test]
 fn test_special_characters() {
     let backends = get_available_backends();
-    let font = Font::new("Arial", 24.0);
+    #[cfg(target_os = "macos")]
+    let font = Font::new("Helvetica", 24.0);
+    #[cfg(not(target_os = "macos"))]
+    let font = Font::new("DejaVu Sans", 24.0);
+
     let segment_options = SegmentOptions::default();
 
     let test_cases = vec![
@@ -223,7 +241,11 @@ fn test_special_characters() {
 #[test]
 fn test_caching() {
     let backends = get_available_backends();
-    let font = Font::new("Arial", 24.0);
+    #[cfg(target_os = "macos")]
+    let font = Font::new("Helvetica", 24.0);
+    #[cfg(not(target_os = "macos"))]
+    let font = Font::new("DejaVu Sans", 24.0);
+
     let text = "Cached text";
     let segment_options = SegmentOptions::default();
 
@@ -258,7 +280,11 @@ fn test_caching() {
 #[test]
 fn test_render_formats() {
     let backends = get_available_backends();
-    let font = Font::new("Arial", 24.0);
+    #[cfg(target_os = "macos")]
+    let font = Font::new("Helvetica", 24.0);
+    #[cfg(not(target_os = "macos"))]
+    let font = Font::new("DejaVu Sans", 24.0);
+
     let text = "Format Test";
     let segment_options = SegmentOptions::default();
 

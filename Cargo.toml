@@ -6,6 +6,36 @@ members = [
     "python",
 ]
 
+[package]
+name = "o4e"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Open Font Engine - High-performance multi-backend text rendering"
+
+[dependencies]
+o4e-core = { path = "backends/o4e-core" }
+o4e-icu-hb = { path = "backends/o4e-icu-hb" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+o4e-mac = { path = "backends/o4e-mac" }
+
+[target.'cfg(windows)'.dependencies]
+o4e-win = { path = "backends/o4e-win" }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "single_render"
+harness = false
+
+[[bench]]
+name = "batch_render"
+harness = false
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
