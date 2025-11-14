@@ -66,8 +66,6 @@ pub struct FontCache {
     /// Rendered glyph cache
     glyph_cache: DashMap<GlyphKey, Arc<RenderedGlyph>>,
 
-    /// Maximum cache sizes
-    shape_cache_size: usize,
 }
 
 impl FontCache {
@@ -80,7 +78,6 @@ impl FontCache {
                 NonZeroUsize::new(cache_size).unwrap_or(NonZeroUsize::new(512).unwrap()),
             )),
             glyph_cache: DashMap::new(),
-            shape_cache_size: cache_size,
         }
     }
 

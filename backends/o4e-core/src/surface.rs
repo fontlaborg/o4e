@@ -63,7 +63,9 @@ impl RenderSurface {
     }
 
     /// Convert the surface into a [`RenderOutput`].
-    pub fn into_render_output(mut self, format: RenderFormat) -> Result<RenderOutput> {
+    pub fn into_render_output(self, format: RenderFormat) -> Result<RenderOutput> {
+        let width = self.width;
+        let height = self.height;
         match format {
             RenderFormat::Svg => Err(O4eError::render(
                 "RenderSurface cannot be converted to SVG output",
@@ -71,20 +73,20 @@ impl RenderSurface {
             RenderFormat::Raw => {
                 let rgba = self.into_rgba_data()?;
                 Ok(RenderOutput::Bitmap(Bitmap {
-                    width: self.width,
-                    height: self.height,
+                    width,
+                    height,
                     data: rgba,
                 }))
             }
             RenderFormat::Png => {
                 let rgba = self.into_rgba_data()?;
-                let png_data = encode_png(self.width, self.height, &rgba)?;
+                let png_data = encode_png(width, height, &rgba)?;
                 Ok(RenderOutput::Png(png_data))
             }
         }
     }
 
-    fn into_rgba_data(&mut self) -> Result<Vec<u8>> {
+    fn into_rgba_data(mut self) -> Result<Vec<u8>> {
         match self.format {
             SurfaceFormat::Gray => Ok(expand_gray(&self.data)),
             SurfaceFormat::Rgba => {

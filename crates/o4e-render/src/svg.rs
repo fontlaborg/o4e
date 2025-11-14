@@ -35,7 +35,7 @@ impl SvgRenderer {
     /// Create a new SVG renderer with options.
     pub fn new(options: &SvgOptions) -> Self {
         Self {
-            precision: options.precision as usize,
+            precision: options.precision,
             simplify: options.simplify,
         }
     }

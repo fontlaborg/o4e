@@ -124,14 +124,13 @@ pub struct PerfStats {
 /// Buffer pool for reusing allocations
 pub struct BufferPool {
     pools: Arc<RwLock<Vec<Vec<u8>>>>,
-    max_size: usize,
+
 }
 
 impl BufferPool {
     pub fn new(max_size: usize) -> Self {
         Self {
             pools: Arc::new(RwLock::new(Vec::with_capacity(max_size))),
-            max_size,
         }
     }
 
