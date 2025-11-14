@@ -742,7 +742,7 @@ mod tests {
 
         let fixture = load_fixture("arabic_glyphs");
         let runs = backend.segment(&fixture.text, &options).unwrap();
-        let fallback_target = Font::new("NotoNaskhArabic-Regular", 48.0);
+        let fallback_target = Font::new("Noto Naskh Arabic", 48.0); // Updated to match actual fontdb family name
         let template_run = runs.first().expect("at least one run");
         let merged_run = TextRun {
             text: fixture.text.clone(),
@@ -760,7 +760,8 @@ mod tests {
 
         let resolved_font = shaped.font.as_ref().expect("fallback font present");
         assert_eq!(
-            resolved_font.family, "NotoNaskhArabic-Regular",
+            resolved_font.family,
+            "Noto Naskh Arabic", // Updated here too
             "expected Arabic fallback font to be Noto Naskh"
         );
     }
@@ -777,7 +778,7 @@ mod tests {
 
         let fixture = load_fixture("devanagari_glyphs");
         let runs = backend.segment(&fixture.text, &options).unwrap();
-        let fallback_target = Font::new("NotoSansDevanagari-Regular", 48.0);
+        let fallback_target = Font::new("Noto Sans Devanagari", 48.0); // Updated to match actual fontdb family name
         let template_run = runs.first().expect("at least one run");
         let merged_run = TextRun {
             text: fixture.text.clone(),
@@ -795,7 +796,8 @@ mod tests {
 
         let resolved_font = shaped.font.as_ref().expect("fallback font present");
         assert_eq!(
-            resolved_font.family, "NotoSansDevanagari-Regular",
+            resolved_font.family,
+            "Noto Sans Devanagari", // Updated here too
             "expected Devanagari fallback font to be Noto Sans Devanagari"
         );
     }

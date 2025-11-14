@@ -173,16 +173,7 @@ fn face_and_scale(font: &Font) -> Option<(Arc<OwnedFace>, f32)> {
         return None;
     }
 
-    let face = font_store()
-        .face_for(font)
-        .map_err(|err| {
-            debug!(
-                "Unable to load font '{}' for outlines: {}",
-                font.family, err
-            );
-            err
-        })
-        .ok()?;
+    let face = font_store().face_for(font).map_err(|err| err).ok()?;
 
     let units = face.as_face_ref().units_per_em();
     if units == 0 {
@@ -482,8 +473,8 @@ mod tests {
     fn noto_sans_font(size: f32) -> (Font, PathBuf) {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/fonts/NotoSans-Regular.ttf");
-        let mut font = Font::new(path.to_string_lossy(), size);
-        font.family = path.to_string_lossy().into_owned();
+        let mut font = Font::new("Noto Sans".to_string(), size); // Corrected family name
+        font.source = o4e_core::types::FontSource::Path(path.to_string_lossy().into_owned()); // Explicitly set source path
         (font, path)
     }
 

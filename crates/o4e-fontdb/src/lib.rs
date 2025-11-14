@@ -21,6 +21,26 @@ pub struct FontDatabase {
     cache: DashMap<String, Arc<FontHandle>>,
 }
 
+fn load_font_data_from_path(db: &mut Database, path: &PathBuf) -> anyhow::Result<()> {
+    for entry in walkdir::WalkDir::new(path)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            let file_path = entry.path();
+            if let Some(ext) = file_path.extension().and_then(|s| s.to_str()) {
+                if matches!(ext.to_lowercase().as_str(), "ttf" | "otf" | "ttc" | "otc") {
+                    log::debug!("Explicitly loading font file: {}", file_path.display());
+                    let font_bytes = std::fs::read(file_path)?;
+                    db.load_font_data(font_bytes);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 impl FontDatabase {
     /// Access the process-wide font database.
     pub fn global() -> &'static Self {
@@ -30,7 +50,18 @@ impl FontDatabase {
             db.load_system_fonts();
             for extra in extra_font_dirs() {
                 if extra.exists() {
-                    db.load_fonts_dir(extra);
+                    // Try to explicitly load known test fonts
+                    if extra.to_string_lossy().contains("testdata/fonts") {
+                        if let Err(e) = load_font_data_from_path(&mut db, &extra) {
+                            log::warn!(
+                                "Failed to explicitly load fonts from {}: {}",
+                                extra.display(),
+                                e
+                            );
+                        }
+                    } else {
+                        db.load_fonts_dir(extra);
+                    }
                 }
             }
 
@@ -254,13 +285,13 @@ pub fn script_fallbacks(script: &str) -> &'static [&'static str] {
 }
 
 const ARABIC_FALLBACKS: [&str; 4] = [
-    "NotoNaskhArabic-Regular",
+    "Noto Naskh Arabic", // Updated from "NotoNaskhArabic-Regular"
     "NotoNaskhArabic",
     "GeezaPro",
     "ArialUnicodeMS",
 ];
 const DEVANAGARI_FALLBACKS: [&str; 3] = [
-    "NotoSansDevanagari-Regular",
+    "Noto Sans Devanagari", // Updated from "NotoSansDevanagari-Regular"
     "NotoSansDevanagari",
     "KohinoorDevanagari",
 ];

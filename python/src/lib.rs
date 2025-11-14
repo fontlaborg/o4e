@@ -15,6 +15,7 @@ use o4e_core::{
     Backend, Font as CoreFont, Glyph as CoreGlyph, RenderOptions as CoreRenderOptions,
     RenderOutput, SegmentOptions, ShapingResult as CoreShapingResult, TextRun,
 };
+use pyo3::types::PyType;
 use pyo3::PyAny;
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
@@ -24,7 +25,7 @@ use pyo3::{
     },
     IntoPy,
 };
-use pyo3::{Bound, PyRef, PyType};
+use pyo3::{Bound, PyRef};
 
 #[cfg(all(target_os = "macos", feature = "mac"))]
 use o4e_mac::CoreTextBackend;
@@ -357,7 +358,7 @@ impl TextRenderer {
             let font_py_ref: PyRef<'py, Font> = font_obj.extract()?;
             let font_ref: &Font = &*font_py_ref;
 
-            let mut options_dict: Bound<'py, PyDict> = PyDict::new_bound(py);
+            let options_dict: Bound<'py, PyDict> = PyDict::new_bound(py);
             for (key, value) in dict.iter() {
                 if let Ok(name) = key.extract::<&str>() {
                     if name == "text" || name == "font" {

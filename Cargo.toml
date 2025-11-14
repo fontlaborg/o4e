@@ -27,6 +27,7 @@ o4e-win = { path = "backends/o4e-win" }
 
 [dev-dependencies]
 criterion = "0.5"
+rayon.workspace = true
 
 [[bench]]
 name = "single_render"
