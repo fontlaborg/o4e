@@ -83,3 +83,4 @@ windows = { version = "0.58", features = [
     "Win32_Graphics_Direct2D",
     "Win32_System_Com",
 ]}
+camino = "1.1"

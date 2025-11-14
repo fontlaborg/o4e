@@ -143,6 +143,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fbdf580320f38b612e485521afda1ee26d10cc9884efaaa750d383e13e3c5f4"
 
 [[package]]
+name = "camino"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "276a59bf2b2c967788139340c9f0c5b12d7fd6630315c15c217e559de85d2609"
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1065,6 +1071,7 @@ name = "o4e-mac"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "camino",
  "core-foundation",
  "core-graphics 0.23.2",
  "core-text 20.1.0",
@@ -1108,10 +1115,13 @@ dependencies = [
  "kurbo",
  "log",
  "o4e-core",
+ "owned_ttf_parser",
  "parking_lot",
  "rayon",
+ "shellexpand",
  "svgtypes",
  "thiserror 1.0.69",
+ "ttf-parser 0.24.1",
 ]
 
 [[package]]

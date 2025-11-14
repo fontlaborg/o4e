@@ -8,6 +8,38 @@ this_file: WORK.md
 
 ### Sprint Start: 2024-11-13
 
+## 2025-11-14 – SVG outline extraction
+
+### Notes
+- Added `ttf-parser`, `owned_ttf_parser`, and `shellexpand` to `crates/o4e-render` so the SVG renderer can load real font data without leaking buffers.
+- Implemented glyph outline extraction + caching (`FontStore` + `SvgOutlineBuilder`) and emit actual `<path>` data with tolerance-based simplification tied to `SvgOptions.precision`.
+- Replaced the placeholder rectangle path logic with true outlines (fallback rectangles remain when fonts are missing) and added fixture-backed tests using `testdata/fonts/NotoSans-Regular.ttf`.
+- Documented the dependency changes plus checked off the matching plan/TODO entries.
+
+### Test log
+- `cargo test` → ✅ (warnings unchanged: existing cfg/unused-field notices plus deprecated `ttf_parser::Face::from_slice` in `o4e-icu-hb`).
+- `uvx hatch test` → ⚠️ no tests collected (baseline repo state).
+
+## 2024-11-14 – Sprint Continuation (Scratchpad)
+
+### Baseline verification
+- `uvx hatch test` → exits 5 because pytest collects zero tests (needs Python suite).
+- `cargo test` → passes (8 tests) with existing warnings (dead_code + deprecated API).
+
+### Immediate focus
+- CoreText backend: replace placeholder glyph extraction/render loop with CTRun data + CTFontDrawGlyphs.
+- Hook CoreText cache + font descriptor plumbing to respect variations/features and prep for fallback logic.
+
+### Progress
+- Wired CoreText shaping to consume real `CTRun` glyph IDs/positions/advances, caching results per `(text,font)` and propagating actual fonts (including fallback resolution).
+- Added descriptor-driven `CTFont` creation so weight/style/variation axes map to CoreText traits, plus feature attributes for ligatures/kerning.
+- Rewrote CoreText renderer to draw saved glyph streams via `CTFontDrawGlyphs`, added antialias mapping, and dropped placeholder text drawing.
+- Added macOS-only regression tests (Latin + Arabic glyph sums, typographic bound check, PNG snapshot) and stored `testdata/expected/coretext/latin_snapshot.png`.
+
+### Test log
+- `cargo test` → ✅ (workspace green; existing warnings persist in shared crates).
+- `uvx hatch test` → ⚠️ no Python tests collected (unchanged baseline).
+
 ## Phase 1: Foundation Setup ✅
 
 ### Completed Tasks (Week 1, Day 1-2)

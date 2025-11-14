@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- SVG renderer now extracts real glyph outlines via `ttf-parser`/`kurbo`, simplifying them based on `SvgOptions.precision` and covering the flow with fixture-backed tests.
 - Regression tests for the CoreText backend covering Latin, Arabic (RTL), and CJK segmentation to lock in script metadata expectations.
 - CoreText rendering regression tests that draw Latin (Helvetica), Arabic (Geeza Pro), and CJK (PingFang SC) samples to ensure macOS output reflects the requested strings.
 - SVG renderer fallbacks that emit rectangles when glyph paths are unavailable along with tests for simple/complex layouts and structural validity.
@@ -24,10 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - PyO3 bindings now expose `Glyph`/`ShapingResult` classes and fully implement the `render`, `shape`, and `render_batch` methods so the Python API can exercise the Rust backend.
 - Python `TextRenderer.render_batch` now normalizes `Font` instances before calling the native batch renderer and has a dedicated unit test for the parallel path.
+- macOS CoreText backend snapshot + glyph regression tests (Latin + Arabic) plus the stored PNG artifact under `testdata/expected/coretext/`.
 
 ### Changed
 - `ShapingResult` now stores the original run text (propagated through batch utilities and PyO3 bindings) so renderers can faithfully replay shaped strings.
 - CoreText rendering consumes the shaped string instead of a hard-coded placeholder, guaranteeing that exported bitmaps/PNGs carry the requested text.
+- CoreText backend now uses descriptor-driven `CTFont` creation (weight/style/variations), resolves per-run fallback fonts, and renders cached `CTRun` glyph streams via `CTFontDrawGlyphs` with precise advances/bounding boxes.
 
 ### Fixed
 - `pyproject.toml` now points maturin to `python/Cargo.toml`, enables the HarfBuzz feature set, and configures `pytest`/`hatch` so editable installs succeed.

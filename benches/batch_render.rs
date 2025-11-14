@@ -2,7 +2,7 @@
 
 //! Batch rendering performance benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use o4e_core::{Backend, Font, RenderOptions, SegmentOptions};
 use rayon::prelude::*;
 
@@ -58,8 +58,10 @@ fn bench_batch_sizes(c: &mut Criterion) {
                     items.par_iter().for_each(|text| {
                         if let Ok(runs) = backend.segment(black_box(text), &segment_options) {
                             for run in &runs {
-                                if let Ok(shaped) = backend.shape(black_box(run), black_box(&font)) {
-                                    let _ = backend.render(black_box(&shaped), black_box(&render_options));
+                                if let Ok(shaped) = backend.shape(black_box(run), black_box(&font))
+                                {
+                                    let _ = backend
+                                        .render(black_box(&shaped), black_box(&render_options));
                                 }
                             }
                         }

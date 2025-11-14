@@ -2,7 +2,7 @@
 
 //! Single render performance benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use o4e_core::{Backend, Font, RenderOptions, SegmentOptions};
 
 #[cfg(target_os = "macos")]
@@ -37,7 +37,9 @@ fn bench_simple_latin(c: &mut Criterion) {
             let runs = backend.segment(black_box(text), &segment_options).unwrap();
             for run in &runs {
                 let shaped = backend.shape(black_box(run), black_box(&font)).unwrap();
-                let _ = backend.render(black_box(&shaped), black_box(&render_options)).unwrap();
+                let _ = backend
+                    .render(black_box(&shaped), black_box(&render_options))
+                    .unwrap();
             }
         });
     });
@@ -65,7 +67,9 @@ fn bench_complex_scripts(c: &mut Criterion) {
                     let runs = backend.segment(black_box(text), &segment_options).unwrap();
                     for run in &runs {
                         let shaped = backend.shape(black_box(run), black_box(&font)).unwrap();
-                        let _ = backend.render(black_box(&shaped), black_box(&render_options)).unwrap();
+                        let _ = backend
+                            .render(black_box(&shaped), black_box(&render_options))
+                            .unwrap();
                     }
                 });
             },
@@ -97,7 +101,9 @@ fn bench_font_sizes(c: &mut Criterion) {
                 let font = Font::new(font_name, size);
                 b.iter(|| {
                     let shaped = backend.shape(black_box(run), black_box(&font)).unwrap();
-                    let _ = backend.render(black_box(&shaped), black_box(&render_options)).unwrap();
+                    let _ = backend
+                        .render(black_box(&shaped), black_box(&render_options))
+                        .unwrap();
                 });
             },
         );
@@ -130,7 +136,9 @@ fn bench_segment_only(c: &mut Criterion) {
 
     c.bench_function("segment_only", |b| {
         b.iter(|| {
-            let _ = backend.segment(black_box(text), black_box(&segment_options)).unwrap();
+            let _ = backend
+                .segment(black_box(text), black_box(&segment_options))
+                .unwrap();
         });
     });
 }
@@ -151,7 +159,9 @@ fn bench_render_only(c: &mut Criterion) {
 
     c.bench_function("render_only", |b| {
         b.iter(|| {
-            let _ = backend.render(black_box(&shaped), black_box(&render_options)).unwrap();
+            let _ = backend
+                .render(black_box(&shaped), black_box(&render_options))
+                .unwrap();
         });
     });
 }

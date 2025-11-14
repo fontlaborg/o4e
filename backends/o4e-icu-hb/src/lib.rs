@@ -522,7 +522,9 @@ mod tests {
         assert_eq!(run.direction, Direction::LeftToRight);
 
         let font = fixture_font("NotoSansDevanagari-Regular.ttf");
-        let shaped = backend.shape(run, &font).expect("Devanagari shaping succeeds");
+        let shaped = backend
+            .shape(run, &font)
+            .expect("Devanagari shaping succeeds");
         let glyph_ids: Vec<u32> = shaped.glyphs.iter().map(|g| g.id).collect();
         let expected_ids = vec![25, 179, 66, 3, 50, 449];
         assert_eq!(glyph_ids, expected_ids, "Devanagari glyph ids changed");

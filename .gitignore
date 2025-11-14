@@ -179,6 +179,7 @@ fonts/
 *.rgba
 !examples/**/*.png
 !reference/**/*.png
+!testdata/expected/coretext/*.png
 
 # LLM-generated files
 llms.txt

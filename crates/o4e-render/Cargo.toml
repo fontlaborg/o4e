@@ -19,3 +19,6 @@ svgtypes = "0.15"
 kurbo = "0.11"
 
 # For path simplification (optional - we'll implement our own simple version)
+ttf-parser = "0.24"
+owned_ttf_parser = "0.24"
+shellexpand = "3"

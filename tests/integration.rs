@@ -38,7 +38,10 @@ fn get_available_backends() -> Vec<Box<dyn Backend>> {
 #[test]
 fn test_backend_initialization() {
     let backends = get_available_backends();
-    assert!(!backends.is_empty(), "At least one backend should be available");
+    assert!(
+        !backends.is_empty(),
+        "At least one backend should be available"
+    );
 
     for backend in backends {
         println!("Testing backend: {}", backend.name());
@@ -114,12 +117,20 @@ fn test_unicode_scripts() {
 
             // We may not support all scripts yet, so just check it doesn't panic
             if let Ok(runs) = runs {
-                assert!(!runs.is_empty(), "Should produce at least one text run for {}", script_name);
+                assert!(
+                    !runs.is_empty(),
+                    "Should produce at least one text run for {}",
+                    script_name
+                );
 
                 // Try shaping
                 for run in &runs {
                     if let Ok(shaped) = backend.shape(run, &font) {
-                        assert!(!shaped.glyphs.is_empty(), "Should produce glyphs for {}", script_name);
+                        assert!(
+                            !shaped.glyphs.is_empty(),
+                            "Should produce glyphs for {}",
+                            script_name
+                        );
                     }
                 }
             }
@@ -212,18 +223,21 @@ fn test_special_characters() {
     let segment_options = SegmentOptions::default();
 
     let test_cases = vec![
-        "Hello\nWorld",     // Newline
-        "Hello\tWorld",     // Tab
-        "Hello World",      // Multiple spaces
-        "Hello!@#$%^&*()",  // Special symbols
-        "\"Hello\"",        // Quotes
-        "Hello—World",      // Em dash
-        "Hello…",           // Ellipsis
+        "Hello\nWorld",    // Newline
+        "Hello\tWorld",    // Tab
+        "Hello World",     // Multiple spaces
+        "Hello!@#$%^&*()", // Special symbols
+        "\"Hello\"",       // Quotes
+        "Hello—World",     // Em dash
+        "Hello…",          // Ellipsis
         "💖🎉🚀",          // Emoji
     ];
 
     for backend in backends {
-        println!("Testing special characters with backend: {}", backend.name());
+        println!(
+            "Testing special characters with backend: {}",
+            backend.name()
+        );
 
         for text in &test_cases {
             println!("  Testing: {:?}", text);
@@ -312,12 +326,18 @@ fn test_render_formats() {
                 (o4e_core::types::RenderFormat::Raw, o4e_core::RenderOutput::Bitmap(bitmap)) => {
                     assert!(bitmap.width > 0);
                     assert!(bitmap.height > 0);
-                    assert_eq!(bitmap.data.len(), (bitmap.width * bitmap.height * 4) as usize);
+                    assert_eq!(
+                        bitmap.data.len(),
+                        (bitmap.width * bitmap.height * 4) as usize
+                    );
                 }
                 (o4e_core::types::RenderFormat::Png, o4e_core::RenderOutput::Png(data)) => {
                     assert!(!data.is_empty());
                     // PNG magic number
-                    assert_eq!(&data[0..8], &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+                    assert_eq!(
+                        &data[0..8],
+                        &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+                    );
                 }
                 (o4e_core::types::RenderFormat::Svg, o4e_core::RenderOutput::Svg(svg)) => {
                     assert!(!svg.is_empty());

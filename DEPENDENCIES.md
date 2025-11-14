@@ -154,13 +154,30 @@ This document lists all project dependencies and explains why each was chosen.
 
 ### Path Utilities
 
-#### `camino = "1.1"` (features: serde1)
+#### `camino = "1.1"`
 **Purpose:** UTF-8 path handling
 **Why chosen:**
 - Enforces UTF-8 paths (required for cross-platform font paths)
 - Better API than std::path::Path for our use case
 - Serde integration for JSON serialization
 - Prevents path encoding issues
+
+### Outline Extraction & Font Resolution
+
+#### `ttf-parser = "0.24"` & `owned_ttf_parser = "0.24"`
+**Purpose:** Access TrueType/OpenType glyph outlines for SVG emission
+**Why chosen:**
+- Battle-tested font parser used across the Rust ecosystem
+- `owned_ttf_parser` keeps font data alive without leaking allocations
+- Provides direct access to glyph curves, units-per-em, and metrics needed for accurate scaling
+- Lightweight dependency that aligns with future outline sharing between raster and SVG paths
+
+#### `shellexpand = "3"`
+**Purpose:** Expand `~` and environment variables in user-provided font paths
+**Why chosen:**
+- Minimal, well-maintained crate focused on safe shell-style expansion
+- Avoids reimplementing brittle tilde handling logic
+- Keeps font lookup consistent with the ICU+HB backend and cross-platform font discovery code
 
 ### Python Bindings
 
